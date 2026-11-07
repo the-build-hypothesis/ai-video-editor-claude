@@ -57,9 +57,12 @@ test('guest edits, previews, saves, reloads and exports a valid MP4', async ({ p
   // Preview shows the composed frame: at t=1s the testsrc2 clip (colorful) + title → not black.
   await page.keyboard.press('Escape');
   await page.getByTestId('ruler').click({ position: { x: 60 + 1, y: 10 } });
-  await page.waitForTimeout(800);
-  const c = await canvasColor(page, 0.05, 0.05, 0.2, 0.2);
-  expect(c.r + c.g + c.b).toBeGreaterThan(60);
+  await expect
+    .poll(async () => {
+      const c = await canvasColor(page, 0.05, 0.05, 0.2, 0.2);
+      return c.r + c.g + c.b;
+    }, { timeout: 20_000 })
+    .toBeGreaterThan(60);
   await page.screenshot({ path: 'artifacts/e2e-editor.png' });
 
   // Play briefly: time advances.

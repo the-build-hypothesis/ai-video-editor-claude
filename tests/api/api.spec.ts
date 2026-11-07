@@ -16,11 +16,12 @@ const FIX = resolve(HERE, '../../fixtures');
 const fixture = (n: string) => readFileSync(join(FIX, n));
 const RUN = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 // A per-run client IP keeps IP-keyed rate limits from leaking between test runs (local dev only;
-// Cloudflare's edge overwrites this header in production).
+// Cloudflare's edge rejects requests that set this header, so it is only sent to localhost).
 const randomIp = () => `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
 
 async function client(opts: { csrf?: boolean; ip?: string } = {}): Promise<APIRequestContext> {
-  const headers: Record<string, string> = { 'CF-Connecting-IP': opts.ip ?? randomIp() };
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)/.test(BASE);
+  const headers: Record<string, string> = isLocal ? { 'CF-Connecting-IP': opts.ip ?? randomIp() } : {};
   if (opts.csrf !== false) headers['X-FF-Client'] = '1';
   return pwRequest.newContext({ baseURL: BASE, extraHTTPHeaders: headers });
 }

@@ -39,6 +39,7 @@ export class PreviewEngine {
   private playStartUs = 0;
   private ctxStart = 0;
   private drawPending = false;
+  private loadingShown = false;
   private disposeCache: () => void;
   timeUs = 0;
   playing = false;
@@ -304,6 +305,15 @@ export class PreviewEngine {
     const t = this.playing ? this.currentTime() : this.timeUs;
     const layers = evaluateVisualLayers(p, t);
     this.syncVideos(t, layers);
+    const loading = layers.some((l) => {
+      if (l.clip.kind === 'video') return (this.slots.get(l.clip.id)?.el.readyState ?? 0) < 2;
+      if (l.clip.kind === 'image') return !mediaCache.image(l.clip.assetId);
+      return false;
+    });
+    if (loading !== this.loadingShown) {
+      this.loadingShown = loading;
+      this.onStatus(loading ? 'Loading media…' : null);
+    }
     renderFrame(this.ctx2d, p, t, this.sourceFor, {
       scale: this.canvas.width / p.settings.width,
       captions: p.captions.enabled,
