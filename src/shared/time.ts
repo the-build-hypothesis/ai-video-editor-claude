@@ -7,8 +7,13 @@ export function frameToUs(n: number, fps: number): number {
 
 /** Index of the frame that contains time t (µs). */
 export function usToFrame(t: number, fps: number): number {
-  // Small epsilon guards against values that are exactly on a rounded boundary.
-  return Math.floor((t * fps + 0.5) / US);
+  // frameToUs rounds to whole µs, so a boundary may sit up to 0.5µs before the exact rational
+  // time. Start from the exact estimate and correct by one against the rounded boundaries so that
+  // usToFrame(frameToUs(n)) === n for every fps.
+  let n = Math.floor((t * fps) / US);
+  if (frameToUs(n + 1, fps) <= t) n++;
+  else if (frameToUs(n, fps) > t) n--;
+  return n;
 }
 
 /** Snap a time to the nearest frame boundary. */
@@ -18,7 +23,9 @@ export function snapToFrame(t: number, fps: number): number {
 
 /** Number of frames needed to render [0, durationUs). */
 export function frameCount(durationUs: number, fps: number): number {
-  return Math.ceil((durationUs * fps) / US - 1e-9);
+  if (durationUs <= 0) return 0;
+  // Frame n is rendered iff frameToUs(n) < durationUs, i.e. count = 1 + index of the last such frame.
+  return usToFrame(durationUs - 1, fps) + 1;
 }
 
 export function secToUs(s: number): number {

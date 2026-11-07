@@ -89,6 +89,7 @@ function ClipInspector({ clip, locked, trackName }: { clip: Clip; locked: boolea
         {clip.kind === 'text' && <TextSection clip={clip} />}
         <section className="insp-section">
           <h4>Timing</h4>
+          <TrackSelect clip={clip} />
           <div className="grid2">
             <NumField label="Start" suffix="s" value={usToSec(clip.timelineStartUs)} step={frameStep} min={0} decimals={3} onCommit={(v) => edit('Set start', (p) => cmd.moveClip(p, { clipId: clip.id, timelineStartUs: secToUs(v) }))} />
             <NumField label="Duration" suffix="s" value={usToSec(clip.durationUs)} step={frameStep} min={0.034} decimals={3} onCommit={(v) => edit('Set duration', (p, ctx) => cmd.trimClip(p, { clipId: clip.id, endUs: clip.timelineStartUs + secToUs(v) }, ctx))} />
@@ -353,5 +354,31 @@ function TextSection({ clip }: { clip: TextClip }) {
         </label>
       </div>
     </section>
+  );
+}
+
+function TrackSelect({ clip }: { clip: Clip }) {
+  const project = useEditor((s) => s.project)!;
+  const edit = useEditor((s) => s.edit);
+  const f = findClip(project, clip.id)!;
+  const options = project.tracks.filter((t) => t.kind === f.track.kind);
+  if (options.length < 2) return null;
+  return (
+    <label className="field">
+      <span className="field-label">Track{f.track.kind === 'video' ? ' (upper tracks draw on top)' : ''}</span>
+      <select
+        className="input"
+        value={f.track.id}
+        data-testid="clip-track"
+        onChange={(e) => edit('Move to track', (p) => cmd.moveClip(p, { clipId: clip.id, timelineStartUs: clip.timelineStartUs, trackId: e.target.value }))}
+      >
+        {options.map((t) => (
+          <option key={t.id} value={t.id} disabled={t.locked}>
+            {t.name}
+            {t.locked ? ' (locked)' : ''}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

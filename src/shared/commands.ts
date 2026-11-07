@@ -28,6 +28,7 @@ import {
   type AspectPreset,
   CaptionsSchema,
 } from './model';
+import { interpGain } from './timeline-eval';
 
 export class CommandError extends Error {
   constructor(message: string) {
@@ -188,8 +189,8 @@ export function trimClip(
   let newStart = args.startUs !== undefined ? Math.round(args.startUs) : oldStart;
   let newEnd = args.endUs !== undefined ? Math.round(args.endUs) : oldEnd;
 
-  if (clip.kind !== 'text') {
-    // Start edge cannot go before source time 0.
+  if (clip.kind === 'video' || clip.kind === 'audio') {
+    // Start edge cannot go before source time 0. (Images are stills: no source-time limit.)
     const earliest = oldStart - Math.floor(clip.sourceStartUs / speed);
     newStart = Math.max(newStart, earliest, 0);
   } else {
@@ -227,8 +228,14 @@ export function splitClip(p0: Project, args: { clipId: string; atUs: number; new
   }
   if ('transitionIn' in right) right.transitionIn = null;
   if ('gainPoints' in right && 'gainPoints' in clip) {
-    right.gainPoints = clip.gainPoints.filter((g) => g.tUs >= leftDur).map((g) => ({ ...g, tUs: g.tUs - leftDur }));
-    clip.gainPoints = clip.gainPoints.filter((g) => g.tUs < leftDur);
+    // Insert an interpolated point at the cut on each side so the automation envelope is unchanged.
+    // Each side gains at most one point while losing at least one, so the 64-point cap still holds.
+    const pts = clip.gainPoints;
+    const atCut = interpGain(pts, leftDur);
+    right.gainPoints = pts.filter((g) => g.tUs >= leftDur).map((g) => ({ ...g, tUs: g.tUs - leftDur }));
+    if (pts.some((g) => g.tUs < leftDur) && !right.gainPoints.some((g) => g.tUs === 0)) right.gainPoints.unshift({ tUs: 0, gain: atCut });
+    clip.gainPoints = pts.filter((g) => g.tUs < leftDur);
+    if (pts.some((g) => g.tUs >= leftDur)) clip.gainPoints.push({ tUs: leftDur, gain: atCut });
   }
   right.fadeInUs = 0;
   clip.durationUs = leftDur;

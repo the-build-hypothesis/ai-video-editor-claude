@@ -15,6 +15,7 @@ import {
   clipEndUs,
   clipSpeed,
 } from './model';
+import { frameCount } from './time';
 
 export interface VisualLayer {
   clip: VisualClip;
@@ -251,7 +252,7 @@ export function interpGain(points: { tUs: number; gain: number }[], local: numbe
 export function exportPlan(p: Project, assets: AssetIndex, opts: { width: number; height: number; fps: number }) {
   let end = 0;
   for (const t of p.tracks) for (const c of t.clips) end = Math.max(end, clipEndUs(c));
-  const frames = Math.ceil((end * opts.fps) / 1_000_000 - 1e-9);
+  const frames = frameCount(end, opts.fps);
   return {
     durationUs: end,
     frames,

@@ -10,6 +10,7 @@ import * as cmd from './commands';
 import { CommandError, type CommandContext } from './commands';
 import { TRANSITION_TYPES, type Project, findClip, clipEndUs, ASPECT_PRESETS, type AspectPreset, projectDurationUs } from './model';
 import { secToUs, usToSec } from './time';
+import { findTransitionPredecessor } from './timeline-eval';
 
 export const AI_OP_TYPES = [
   'addText',
@@ -250,7 +251,8 @@ export function applyAiOperation(p: Project, op: AiOperation, ctx: CommandContex
       const f = clipOf(op.clipId);
       const d = checkTime(op.durationSec ?? 1, 'durationSec');
       const type = op.transition ?? 'dissolve';
-      const prev = f.track.clips.find((c) => c.id !== f.clip.id && Math.abs(clipEndUs(c) - f.clip.timelineStartUs) <= 50_000);
+      // Same predecessor rule as the renderer, so an accepted transition is guaranteed to be visible.
+      const prev = findTransitionPredecessor(f.track, f.clip);
       if (!prev) throw new CommandError('No adjacent preceding clip on the same track for a transition');
       return { project: cmd.setTransition(p, { clipId: f.clip.id, transition: { type, durationUs: Math.max(33_000, Math.min(d, 5_000_000)) } }), description: `${type} transition (${usToSec(d).toFixed(1)}s) into ${describeClip(p, f.clip.id)}` };
     }
