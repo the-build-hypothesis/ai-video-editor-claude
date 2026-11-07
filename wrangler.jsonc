@@ -29,5 +29,6 @@
   "routes": [
     { "pattern": "ai-video-editor-v1-claude.thebuildhypothesis.com", "custom_domain": true }
   ],
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["17 3 * * *"] }
 }
