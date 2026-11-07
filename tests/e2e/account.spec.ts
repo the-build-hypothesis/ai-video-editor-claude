@@ -45,6 +45,7 @@ test('registered user saves, signs out, signs in and reopens; another user is de
   const p2 = await ctx2.newPage();
   await p2.goto('/');
   await p2.getByRole('button', { name: 'Continue as guest' }).click();
+  await expect(p2.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
   await p2.goto(url);
   await expect(p2.getByRole('alert')).toContainText(/not found|access/i);
   const projectId = url.split('/project/')[1];

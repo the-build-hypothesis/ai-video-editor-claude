@@ -36,10 +36,15 @@ async function callWithRetry(url: string, key: string, makeInit: () => { body: B
       continue;
     }
     if (res.ok) return res.json();
+    // Never forward raw provider messages (they can echo masked keys or request details).
     let msg = `AI provider error (HTTP ${res.status})`;
+    if (res.status === 401 || res.status === 403) msg = 'AI provider rejected the server credentials — the AI service is misconfigured. Please contact the administrator.';
+    else if (res.status === 429) msg = 'AI provider is rate limiting or out of quota. Please retry in a minute.';
+    else if (res.status === 400) msg = 'AI provider rejected the request (unsupported or invalid audio/input).';
+    else if (res.status >= 500) msg = 'AI provider is temporarily unavailable. Please retry.';
     try {
-      const j = (await res.json()) as { error?: { message?: string } };
-      if (j?.error?.message) msg += `: ${j.error.message.slice(0, 300)}`;
+      const j = (await res.json()) as { error?: { code?: string; type?: string } };
+      console.log(JSON.stringify({ level: 'warn', msg: 'openai_error', status: res.status, code: j?.error?.code ?? null, type: j?.error?.type ?? null }));
     } catch {
       /* ignore */
     }

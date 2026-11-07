@@ -138,9 +138,9 @@ test.describe('auth', () => {
     const res = await c.post('/api/auth/login', { data: { email, password: 'wrong-password' } });
     expect(res.status()).toBe(429);
     expect(res.headers()['retry-after']).toBeTruthy();
-    // A different IP is not affected.
+    // A different IP is not affected (only verifiable locally, where the client IP can be simulated).
     const other = await client();
-    expect((await other.post('/api/auth/login', { data: { email, password: 'wrong-password' } })).status()).toBe(401);
+    if (/localhost|127\.0\.0\.1/.test(BASE)) expect((await other.post('/api/auth/login', { data: { email, password: 'wrong-password' } })).status()).toBe(401);
     await c.dispose();
     await other.dispose();
   });
