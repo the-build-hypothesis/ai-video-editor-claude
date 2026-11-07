@@ -119,7 +119,7 @@ function MediaList() {
             <li key={u.id} className={`upload upload-${u.status}`}>
               <div className="upload-name">{u.name}</div>
               {u.status === 'error' ? (
-                <div className="upload-error" role="alert">
+                <div className="upload-error-msg" role="alert">
                   {u.error}
                 </div>
               ) : (

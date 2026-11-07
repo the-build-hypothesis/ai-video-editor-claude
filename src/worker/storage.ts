@@ -4,6 +4,13 @@
  * from validated ids (no user-controlled path segments → no traversal).
  */
 import type { Env } from './env';
+import { D1BlobStore } from './d1-blob';
+
+/** Active object store: R2 when bound, otherwise the D1 chunked fallback. */
+export function bucket(env: Env): R2Bucket {
+  return (env.MEDIA ?? new D1BlobStore(env.DB)) as unknown as R2Bucket;
+}
+export const storageBackend = (env: Env) => (env.MEDIA ? 'r2' : 'd1');
 
 export const keys = {
   assetOriginal: (ownerId: string, assetId: string) => `u/${ownerId}/a/${assetId}/original`,
@@ -13,19 +20,19 @@ export const keys = {
 };
 
 export async function putObject(env: Env, key: string, body: ReadableStream | ArrayBuffer | Uint8Array, contentType: string): Promise<number> {
-  const obj = await env.MEDIA.put(key, body, { httpMetadata: { contentType } });
+  const obj = await bucket(env).put(key, body, { httpMetadata: { contentType } });
   if (!obj) throw new Error('Storage put failed');
   return obj.size;
 }
 
 export async function getObject(env: Env, key: string, range?: { offset: number; length: number }) {
-  return env.MEDIA.get(key, range ? { range } : undefined);
+  return bucket(env).get(key, range ? { range } : undefined);
 }
 
 export async function deleteObjects(env: Env, keyList: string[]): Promise<void> {
   for (let i = 0; i < keyList.length; i += 1000) {
     const batch = keyList.slice(i, i + 1000);
-    if (batch.length) await env.MEDIA.delete(batch);
+    if (batch.length) await bucket(env).delete(batch);
   }
 }
 
@@ -34,9 +41,9 @@ export async function deletePrefix(env: Env, prefix: string): Promise<number> {
   let cursor: string | undefined;
   let n = 0;
   do {
-    const list = await env.MEDIA.list({ prefix, cursor, limit: 1000 });
+    const list = await bucket(env).list({ prefix, cursor, limit: 1000 });
     const ks = list.objects.map((o) => o.key);
-    if (ks.length) await env.MEDIA.delete(ks);
+    if (ks.length) await bucket(env).delete(ks);
     n += ks.length;
     cursor = list.truncated ? list.cursor : undefined;
   } while (cursor);
@@ -46,9 +53,8 @@ export async function deletePrefix(env: Env, prefix: string): Promise<number> {
 /** Cheap liveness probe; false (never throws) when the binding is missing or erroring. */
 export async function storageHealthy(env: Env): Promise<boolean> {
   try {
-    if (!env.MEDIA) return false;
-    await Promise.race([
-      env.MEDIA.head('__health__'),
+        await Promise.race([
+      bucket(env).head('__health__'),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000)),
     ]);
     return true;

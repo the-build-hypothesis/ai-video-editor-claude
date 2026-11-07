@@ -5,7 +5,7 @@ import { ApiError, notFound, parseInput } from '../errors';
 import { randomId } from '../lib/crypto';
 import { SNIFF_BYTES, matchesMime } from '../lib/sniff';
 import { contentLength, iso, requireUser, serveObject } from '../util';
-import { deleteObjects, keys, putObject, putVerifiedStream } from '../storage';
+import { bucket, deleteObjects, keys, putObject, putVerifiedStream } from '../storage';
 import { ALLOWED_MIME, LIMITS, type AssetDTO, type AssetMetadata } from '../../shared/api-types';
 
 export interface AssetRow {
@@ -172,7 +172,7 @@ export const assetRoutes = new Hono<AppEnv>()
     const u = requireUser(c);
     const a = await loadOwnedAsset(c.env, parseInput(IdParam, c.req.param('id')), u.id);
     if (!a.thumb_mime) throw notFound('Thumbnail');
-    const obj = await c.env.MEDIA.get(keys.assetThumb(u.id, a.id));
+    const obj = await bucket(c.env).get(keys.assetThumb(u.id, a.id));
     if (!obj) throw notFound('Thumbnail');
     return new Response(obj.body, {
       headers: { 'Content-Type': a.thumb_mime, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff', 'Content-Length': String(obj.size) },

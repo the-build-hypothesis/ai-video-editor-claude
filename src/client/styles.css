@@ -432,14 +432,13 @@ fieldset.plain {
 /* toasts & modals */
 .toasts {
   position: fixed;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 60px;
+  right: 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   z-index: 1000;
-  max-width: min(560px, 92vw);
+  max-width: min(420px, 92vw);
 }
 .toast {
   display: flex;
@@ -774,7 +773,7 @@ kbd {
   height: 100%;
   display: grid;
   grid-template-columns: 270px minmax(360px, 1fr) 330px;
-  grid-template-rows: auto minmax(220px, 1fr) minmax(220px, 38vh);
+  grid-template-rows: auto minmax(200px, 1fr) minmax(250px, 42vh);
   grid-template-areas:
     'top top top'
     'left center right'
@@ -875,9 +874,9 @@ kbd {
   cursor: pointer;
   color: var(--muted);
   border-bottom: 2px solid transparent;
-  font-size: 12.5px;
+  font-size: 12px;
   display: inline-flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
@@ -989,7 +988,7 @@ kbd {
   flex-direction: column;
   gap: 5px;
 }
-.upload-error {
+.upload-error-msg {
   color: #ffc0c8;
 }
 .upload-name {

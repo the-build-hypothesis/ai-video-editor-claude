@@ -116,7 +116,7 @@ function RightPanel() {
   const tabs: [typeof tab, string, string][] = [
     ['inspector', 'Inspector', 'sliders'],
     ['captions', 'Captions', 'cc'],
-    ['ai', 'AI Assistant', 'sparkle'],
+    ['ai', 'AI', 'sparkle'],
     ['export', 'Export', 'export'],
   ];
   return (
