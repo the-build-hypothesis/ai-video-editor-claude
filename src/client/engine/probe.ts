@@ -101,7 +101,11 @@ export async function probeFile(file: File): Promise<ProbeResult> {
       throw new ProbeError(`"${file.name}" is not a readable MP4 — it may be corrupt or truncated.`);
     }
     if (!vt) throw new ProbeError(`"${file.name}" has no video track.`);
-    if (!(await vt.canDecode())) throw new ProbeError(`This browser cannot decode the video codec (${vt.codec ?? 'unknown'}) in "${file.name}". Use H.264 MP4.`);
+    if (!(await vt.canDecode())) throw new ProbeError(
+        vt.codec === 'avc'
+          ? `This browser cannot decode H.264 video ("${file.name}"). Use a recent Chrome or Edge on desktop.`
+          : `This browser cannot decode the ${vt.codec ?? 'unknown'} video codec in "${file.name}". Convert it to H.264 MP4 or use Chrome/Edge.`,
+      );
     const durationSec = await input.computeDuration();
     if (!(durationSec > 0)) throw new ProbeError(`"${file.name}" has no playable duration.`);
     if (durationSec > LIMITS.maxMediaDurationSec) throw new ProbeError(`Video longer than ${LIMITS.maxMediaDurationSec / 60} minutes is not supported.`);

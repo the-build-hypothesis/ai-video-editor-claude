@@ -83,7 +83,11 @@ The source timecodes burned into the test pattern confirm the trim and split sou
 
 - Tests that call OpenAI skip with `SKIP_REAL_AI=1`. They were **not** skipped in the recorded runs.
 - No automated test for drag-and-drop gestures on the timeline (move/trim by mouse). Those code paths were exercised manually through screenshots; move and trim are tested through the inspector and commands.
-- Not tested in Safari, Firefox, or Chrome/Edge on Windows/macOS. Only Chromium 158 on Linux.
+- **Cross-browser:**
+  - Chromium 158 (Linux) is fully tested.
+  - **Firefox 159 (Playwright build, Linux)** has WebCodecs but no H.264 decode or encode, because Playwright's Firefox doesn't download OpenH264. There, the app rejects MP4 uploads with "This browser cannot decode H.264 video… use Chrome or Edge" and disables export with "cannot encode H.264… No fallback format is substituted". Verified by a scripted run. Image and audio import work.
+  - Consumer Firefox and Safari were not tested. WebKit couldn't be launched in this environment (missing system libraries).
+  - Chrome and Edge on Windows/macOS were not tested.
 - Preview audio/video sync was checked by eye only; it isn't measured.
 
 ## Known failures / flakiness
