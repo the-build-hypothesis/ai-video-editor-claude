@@ -219,8 +219,10 @@ export function NumField({
   useEffect(() => {
     if (!focused) setText(Number.isFinite(value) ? String(Number(value.toFixed(decimals))) : '');
   }, [value, focused, decimals]);
+  const numRef = useRef<HTMLInputElement>(null);
   const commit = () => {
-    const v = parseFloat(text);
+    // Read the live DOM value: the blur handler's closure can be one render behind the last keystroke.
+    const v = parseFloat(numRef.current?.value ?? text);
     if (!Number.isFinite(v)) {
       setText(String(Number(value.toFixed(decimals))));
       return;
@@ -237,6 +239,7 @@ export function NumField({
       <span className="field-input">
         <input
           type="number"
+          ref={numRef}
           className="input input-num"
           aria-label={label}
           value={text}
