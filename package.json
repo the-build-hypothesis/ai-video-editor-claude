@@ -11,9 +11,11 @@
     "lint": "eslint src tests",
     "test": "vitest run",
     "e2e": "playwright test",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "deploy": "npm run build && wrangler deploy"
+    "db:migrate:local": "wrangler d1 migrations apply DB --local -c wrangler.jsonc",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote -c wrangler.jsonc",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:d1": "FF_STORAGE=d1 npm run build && wrangler deploy",
+    "e2e:noai": "SKIP_REAL_AI=1 playwright test"
   },
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.65.2",

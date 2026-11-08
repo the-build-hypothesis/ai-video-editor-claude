@@ -4,7 +4,9 @@ import { NumField, RangeField, Icon } from './ui';
 import * as cmd from '../../shared/commands';
 import { clipEndUs, findClip, TRANSITION_TYPES, TEXT_ANIMATIONS, type Clip, type TextClip, type Project } from '../../shared/model';
 import { secToUs, usToSec } from '../../shared/time';
-import { deleteSelection, splitAtPlayhead } from '../actions';
+import { deleteSelection, splitAtPlayhead, seek } from '../actions';
+import { mediaCache } from '../engine/media-cache';
+import { detectSilences, DEFAULT_SILENCE } from '../engine/silence';
 
 export function Inspector() {
   const project = useEditor((s) => s.project)!;
@@ -164,6 +166,7 @@ function ClipInspector({ clip, locked, trackName }: { clip: Clip; locked: boolea
               </div>
             )}
             <DuckButton clip={clip} />
+            <SilenceTool clip={clip} />
           </section>
         )}
       </fieldset>
@@ -380,5 +383,96 @@ function TrackSelect({ clip }: { clip: Clip }) {
         ))}
       </select>
     </label>
+  );
+}
+
+/** AI-09: propose cuts for silent passages (audio energy based), preview them, then remove as one undoable edit. */
+function SilenceTool({ clip }: { clip: Clip }) {
+  const edit = useEditor((s) => s.edit);
+  const assets = useEditor((s) => s.assets);
+  const [busy, setBusy] = useState(false);
+  const [thresholdDb, setThresholdDb] = useState(DEFAULT_SILENCE.thresholdDb);
+  const [minSec, setMinSec] = useState(DEFAULT_SILENCE.minSilenceSec);
+  const [found, setFound] = useState<{ startUs: number; endUs: number; on: boolean }[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  if (clip.kind !== 'audio' && clip.kind !== 'video') return null;
+  const asset = assets.find((a) => a.id === clip.assetId);
+  if (!asset?.metadata.hasAudio) return null;
+  const analyze = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const buf = await mediaCache.loadAudio(clip.assetId);
+      if (!buf) throw new Error('Could not decode audio for this clip.');
+      setFound(detectSilences(buf, clip, { thresholdDb, minSilenceSec: minSec, paddingSec: DEFAULT_SILENCE.paddingSec }).map((r) => ({ ...r, on: true })));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const chosen = found?.filter((r) => r.on) ?? [];
+  const total = chosen.reduce((a, r) => a + r.endUs - r.startUs, 0);
+  return (
+    <div className="duck" data-testid="silence-tool">
+      <h5>Remove silences</h5>
+      <div className="grid2">
+        <label className="field">
+          <span className="field-label">Silence below</span>
+          <select className="input" value={thresholdDb} onChange={(e) => setThresholdDb(Number(e.target.value))}>
+            {[-25, -30, -35, -40, -45].map((d) => (
+              <option key={d} value={d}>
+                {d} dB
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Longer than</span>
+          <select className="input" value={minSec} onChange={(e) => setMinSec(Number(e.target.value))}>
+            {[0.3, 0.5, 0.6, 0.8, 1, 1.5].map((d) => (
+              <option key={d} value={d}>
+                {d} s
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button className="btn btn-sm" onClick={analyze} disabled={busy} data-testid="find-silences">
+        {busy ? 'Analyzing…' : 'Find silent parts'}
+      </button>
+      {err && <div className="error-box small">{err}</div>}
+      {found && found.length === 0 && <p className="muted small">No silences found with these settings.</p>}
+      {found && found.length > 0 && (
+        <>
+          <ul className="op-list">
+            {found.map((r, i) => (
+              <li key={i} className="op">
+                <label className="check">
+                  <input type="checkbox" checked={r.on} onChange={() => setFound(found.map((x, j) => (j === i ? { ...x, on: !x.on } : x)))} aria-label={`Cut ${usToSec(r.startUs).toFixed(2)} to ${usToSec(r.endUs).toFixed(2)} seconds`} />
+                  <span>
+                    {usToSec(r.startUs).toFixed(2)}–{usToSec(r.endUs).toFixed(2)}s ({usToSec(r.endUs - r.startUs).toFixed(2)}s)
+                  </span>
+                </label>
+                <button className="btn btn-sm btn-ghost" onClick={() => seek(Math.max(0, r.startUs - 500_000))} title="Jump the playhead just before this cut to preview it">
+                  Preview
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            className="btn btn-sm btn-primary"
+            disabled={chosen.length === 0}
+            data-testid="apply-silences"
+            onClick={() => {
+              if (edit(`Remove ${chosen.length} silences`, (p) => cmd.removeRangesFromClip(p, { clipId: clip.id, ranges: chosen }))) setFound(null);
+            }}
+          >
+            Cut {chosen.length} part{chosen.length === 1 ? '' : 's'} (−{usToSec(total).toFixed(1)}s)
+          </button>
+          <p className="hint">Later clips on this track and captions shift left to close the gaps. Other tracks are not moved. Undo restores everything.</p>
+        </>
+      )}
+    </div>
   );
 }

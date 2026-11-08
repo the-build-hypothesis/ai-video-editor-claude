@@ -109,7 +109,7 @@ Limits: 100 MB and 20 minutes per file; 2 GB per user (500 MB per guest). Enforc
 | AI-06 | P1 | implemented | Applied through the shared command layer as one undoable edit. E: apply, undo, redo. |
 | AI-07 | P1 | implemented | Unsupported requests are listed under "Not supported"; ops with unknown IDs are dropped on the server and rejected in the client. U: ai-actions. |
 | AI-08 | P1 | implemented | `ai_operations` records status, latency, tokens, audio seconds and estimated cost; per-project history in the AI panel; totals on the admin page. |
-| AI-09 | P2 | not implemented | No filler or silence removal. |
+| AI-09 | P2 | partial | **Silence removal** is implemented. The inspector's "Remove silences" tool detects silent passages from audio energy and proposes cuts with an adjustable threshold and minimum length. Each cut can be toggled and previewed (jump to it), and applying cuts the clip, ripples its track and shifts captions as one undoable edit. U: remove-ranges. E: `silence.spec`. **Filler-word removal is not implemented** (word timings aren't kept after captions are created). |
 | AI-10 | P2 | partial | The `setAspectRatio` op and aspect presets exist. No automatic variant generation with reframing. |
 
 ## 4.9 Export

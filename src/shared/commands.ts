@@ -446,3 +446,49 @@ export function duckUnderCaptions(p0: Project, args: { clipId: string; duckGain:
   clip.gainPoints = points.slice(0, 64);
   return finalize(p);
 }
+
+/**
+ * Cut timeline ranges out of one clip (e.g. detected silences) and ripple the rest of that track
+ * left so no gaps remain. Captions inside removed ranges are deleted; later captions shift left.
+ * Ranges are timeline µs, half-open, and are clamped to the clip. Other tracks are not moved.
+ */
+export function removeRangesFromClip(p0: Project, args: { clipId: string; ranges: { startUs: number; endUs: number }[] }): Project {
+  const f0 = requireClip(p0, args.clipId);
+  const clipStart = f0.clip.timelineStartUs;
+  const clipEnd = clipEndUs(f0.clip);
+  const ranges = args.ranges
+    .map((r) => ({ startUs: Math.max(clipStart, Math.round(r.startUs)), endUs: Math.min(clipEnd, Math.round(r.endUs)) }))
+    .filter((r) => r.endUs - r.startUs >= MIN_DURATION_US)
+    .sort((a, b) => b.startUs - a.startUs); // process from the end so earlier positions stay valid
+  if (ranges.length === 0) return p0;
+  let p = p0;
+  const trackId = f0.track.id;
+  for (const r of ranges) {
+    // Find the piece of the (possibly already split) clip that contains this range.
+    const track = p.tracks.find((t) => t.id === trackId)!;
+    const piece = track.clips.find((c) => c.timelineStartUs <= r.startUs && clipEndUs(c) >= r.endUs && (c.id === args.clipId || c.id.startsWith(args.clipId + '_')));
+    if (!piece) continue;
+    let target = piece.id;
+    if (r.startUs - piece.timelineStartUs >= MIN_DURATION_US) {
+      const rightId = `${args.clipId}_${Math.random().toString(36).slice(2, 8)}`;
+      p = splitClip(p, { clipId: target, atUs: r.startUs, newId: rightId });
+      target = rightId;
+    }
+    const tgt = findClip(p, target)!.clip;
+    if (clipEndUs(tgt) - r.endUs >= MIN_DURATION_US) p = splitClip(p, { clipId: target, atUs: r.endUs, newId: `${args.clipId}_${Math.random().toString(36).slice(2, 8)}` });
+    p = rippleDelete(p, { clipId: target });
+    // Captions: drop those fully inside, shift later ones, trim overlapping ones.
+    const len = r.endUs - r.startUs;
+    const q = clone(p);
+    q.captions.segments = q.captions.segments
+      .filter((s) => !(s.startUs >= r.startUs && s.endUs <= r.endUs))
+      .map((s) => {
+        if (s.startUs >= r.endUs) return { ...s, startUs: s.startUs - len, endUs: s.endUs - len };
+        if (s.endUs > r.startUs && s.startUs < r.startUs) return { ...s, endUs: Math.max(s.startUs + MIN_DURATION_US, s.endUs > r.endUs ? s.endUs - len : r.startUs) };
+        if (s.startUs < r.endUs && s.endUs > r.endUs) return { ...s, startUs: r.startUs, endUs: s.endUs - len };
+        return s;
+      });
+    p = finalize(q);
+  }
+  return p;
+}

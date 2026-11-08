@@ -18,3 +18,4 @@ $FF -y -loglevel error -f lavfi -i "testsrc=size=1280x720:rate=30" -f lavfi -i "
 $FF -y -loglevel error -display_rotation 90 -i /tmp/ff_rot_src.mp4 -c copy clip-d-rotated-phone.mp4
 $FF -y -loglevel error -f lavfi -i "testsrc2=size=1920x1080:rate=60" -f lavfi -i "sine=f=440:sample_rate=44100" -t 4 -c:v libx264 -profile:v high -bf 3 -g 120 -crf 32 -pix_fmt yuv420p -c:a aac -ar 44100 clip-e-1080p60-bframes.mp4
 echo "fixtures regenerated"
+$FF -y -loglevel error -f lavfi -i "sine=f=500:sample_rate=48000:duration=1" -f lavfi -i "anullsrc=r=48000:cl=mono" -f lavfi -i "sine=f=700:sample_rate=48000:duration=1" -filter_complex "[1]atrim=duration=1.5[s];[0][s][2]concat=n=3:v=0:a=1" -ac 1 tones-with-gap.wav
