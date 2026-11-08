@@ -7,7 +7,7 @@ import type { AiOperation } from '../../src/shared/ai-actions';
 
 const nullOp: AiOperation = {
   type: 'addText', clipId: null, trackId: null, text: null, startSec: null, endSec: null, durationSec: null, atSec: null, volume: null,
-  fadeInSec: null, fadeOutSec: null, transition: null, position: null, fontSize: null, color: null, speed: null, brightness: null,
+  fadeInSec: null, fadeOutSec: null, transition: null, position: null, fontSize: null, color: null, speed: null, scale: null, brightness: null,
   contrast: null, saturation: null, aspect: null, reason: null,
 };
 

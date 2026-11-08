@@ -26,11 +26,13 @@ export const AI_OP_TYPES = [
   'setAspectRatio',
   'createCaptions',
   'duckMusic',
+  'removeSilences',
+  'kenBurns',
 ] as const;
 export type AiOpType = (typeof AI_OP_TYPES)[number];
 
 /** Operations that remove or shorten content require explicit confirmation in the UI. */
-export const DESTRUCTIVE_OPS: AiOpType[] = ['deleteClip', 'trimClip', 'splitClip'];
+export const DESTRUCTIVE_OPS: AiOpType[] = ['deleteClip', 'trimClip', 'splitClip', 'removeSilences'];
 
 const nnum = z.number().finite().nullable();
 const nstr = z.string().max(500).nullable();
@@ -52,6 +54,7 @@ export const AiOperationSchema = z.object({
   fontSize: nnum,
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable(),
   speed: nnum,
+  scale: nnum.default(null),
   brightness: nnum,
   contrast: nnum,
   saturation: nnum,
@@ -90,7 +93,7 @@ export const AI_PLAN_JSON_SCHEMA = {
           additionalProperties: false,
           required: [
             'type', 'clipId', 'trackId', 'text', 'startSec', 'endSec', 'durationSec', 'atSec', 'volume', 'fadeInSec',
-            'fadeOutSec', 'transition', 'position', 'fontSize', 'color', 'speed', 'brightness', 'contrast', 'saturation', 'aspect', 'reason',
+            'fadeOutSec', 'transition', 'position', 'fontSize', 'color', 'speed', 'scale', 'brightness', 'contrast', 'saturation', 'aspect', 'reason',
           ],
           properties: {
             type: { type: 'string', enum: [...AI_OP_TYPES] },
@@ -109,6 +112,7 @@ export const AI_PLAN_JSON_SCHEMA = {
             fontSize: nullable('number'),
             color: nullable('string'),
             speed: nullable('number'),
+            scale: nullable('number'),
             brightness: nullable('number'),
             contrast: nullable('number'),
             saturation: nullable('number'),
@@ -135,6 +139,8 @@ export const AI_OPS_DOC = `Available operations (fields not listed must be null)
 - setAspectRatio: aspect(16:9|9:16|1:1|4:5).
 - createCaptions: clipId of a video/audio clip with speech. Starts transcription (user reviews captions afterwards).
 - duckMusic: clipId of a music/audio clip; lowers it to 'volume' (default 0.25) under existing caption (speech) segments.
+- removeSilences: clipId of a video/audio clip with speech; detects silent pauses longer than durationSec (leave null for the 0.6 s default; vague requests like "long pauses" are fine) and cuts them out (the track ripples closed). Destructive.
+- kenBurns: clipId of a video/image clip; slow zoom from scale 1 to 'scale' (default 1.15, use <1 to zoom out) over the whole clip (adds keyframes).
 All times are in seconds on the project timeline.`;
 
 export interface AppliedOp {
@@ -145,7 +151,7 @@ export interface AppliedOp {
   error?: string;
   destructive: boolean;
   /** Client must run a follow-up async action (e.g. transcription). */
-  followUp?: { kind: 'transcribe'; clipId: string };
+  followUp?: { kind: 'transcribe'; clipId: string } | { kind: 'removeSilences'; clipId: string; minSilenceSec: number };
 }
 
 function need<T>(v: T | null | undefined, name: string): T {
@@ -289,6 +295,25 @@ export function applyAiOperation(p: Project, op: AiOperation, ctx: CommandContex
       const a = ctx.assets[f.clip.assetId];
       if (a && a.kind === 'video' && !a.hasAudio) throw new CommandError('That clip has no audio track');
       return { project: p, description: `Transcribe ${describeClip(p, f.clip.id)} and create captions (you review them before export)`, followUp: { kind: 'transcribe', clipId: f.clip.id } };
+    }
+    case 'removeSilences': {
+      const f = clipOf(op.clipId);
+      if (f.clip.kind !== 'video' && f.clip.kind !== 'audio') throw new CommandError('Silence removal needs a video or audio clip');
+      const a = ctx.assets[f.clip.assetId];
+      if (a && !a.hasAudio) throw new CommandError('That clip has no audio');
+      if (f.track.locked) throw new CommandError(`Track ${f.track.name} is locked`);
+      const min = Math.min(5, Math.max(0.3, op.durationSec ?? 0.6));
+      return { project: p, description: `Find and cut silent pauses longer than ${min.toFixed(1)}s in ${describeClip(p, f.clip.id)}`, followUp: { kind: 'removeSilences', clipId: f.clip.id, minSilenceSec: min } };
+    }
+    case 'kenBurns': {
+      const f = clipOf(op.clipId);
+      if (f.clip.kind !== 'video' && f.clip.kind !== 'image') throw new CommandError('Ken Burns zoom applies to video or image clips');
+      const target = op.scale ?? 1.15;
+      if (target < 0.5 || target > 3) throw new CommandError('scale must be 0.5..3');
+      const base = f.clip.transform.scale;
+      let q = cmd.setTransformAt(p, { clipId: f.clip.id, localUs: 0, patch: { scale: target >= 1 ? base : base * (1 / target) }, forceKeyframe: true });
+      q = cmd.setTransformAt(q, { clipId: f.clip.id, localUs: f.clip.durationUs, patch: { scale: target >= 1 ? base * target : base }, forceKeyframe: true });
+      return { project: q, description: `Slow ${target >= 1 ? 'zoom in' : 'zoom out'} (Ken Burns) on ${describeClip(p, f.clip.id)}` };
     }
     case 'duckMusic': {
       const f = clipOf(op.clipId);

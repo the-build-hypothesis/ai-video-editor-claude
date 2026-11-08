@@ -15,7 +15,7 @@ import { S, assets, ctx, videoClip, audioClip, textClip, projectWith, getClip, t
 
 const NULL_OP: Omit<AiOperation, 'type'> = {
   clipId: null, trackId: null, text: null, startSec: null, endSec: null, durationSec: null, atSec: null, volume: null,
-  fadeInSec: null, fadeOutSec: null, transition: null, position: null, fontSize: null, color: null, speed: null, brightness: null,
+  fadeInSec: null, fadeOutSec: null, transition: null, position: null, fontSize: null, color: null, speed: null, scale: null, brightness: null,
   contrast: null, saturation: null, aspect: null, reason: null,
 };
 const op = (type: AiOperation['type'], fields: Partial<AiOperation> = {}): AiOperation => ({ ...NULL_OP, type, ...fields });
@@ -238,9 +238,20 @@ describe('applyAiPlan — rejections', () => {
 
 describe('applyAiPlan — plan semantics', () => {
   it('flags destructive operations', () => {
-    expect([...DESTRUCTIVE_OPS].sort()).toEqual(['deleteClip', 'splitClip', 'trimClip']);
+    expect([...DESTRUCTIVE_OPS].sort()).toEqual(['deleteClip', 'removeSilences', 'splitClip', 'trimClip']);
     const r = applyAiPlan(base(), [op('deleteClip', { clipId: 'c3' }), op('addFade', { clipId: 'c1', fadeInSec: 1 }), op('trimClip', { clipId: 'ghost', endSec: 1 })], ctx);
     expect(r.results.map((x) => x.destructive)).toEqual([true, false, true]);
+  });
+
+  it('removeSilences returns a follow-up; kenBurns adds start/end keyframes', () => {
+    const r1 = one(base(), op('removeSilences', { clipId: 'c1', durationSec: 0.8 }));
+    expect(r1.res.ok).toBe(true);
+    expect(r1.res.followUp).toEqual({ kind: 'removeSilences', clipId: 'c1', minSilenceSec: 0.8 });
+    const r2 = one(base(), op('kenBurns', { clipId: 'c1', scale: 1.2 }));
+    expect(r2.res.ok).toBe(true);
+    const c = r2.project.tracks.flatMap((t) => t.clips).find((x) => x.id === 'c1')!;
+    expect(c.kind === 'video' && c.keyframes.map((k) => k.scale)).toEqual([1, 1.2]);
+    expect(one(base(), op('kenBurns', { clipId: 'c1', scale: 9 })).res.ok).toBe(false);
   });
 
   it('createCaptions returns a transcription follow-up and leaves the project unchanged', () => {

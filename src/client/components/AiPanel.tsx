@@ -4,9 +4,14 @@ import { api, ApiError } from '../api';
 import { applyAiPlan, type AiPlan, type AppliedOp } from '../../shared/ai-actions';
 import { Icon } from './ui';
 import { transcribeClip } from '../transcribe';
+import { mediaCache } from '../engine/media-cache';
+import { detectSilences, DEFAULT_SILENCE } from '../engine/silence';
+import { removeRangesFromClip } from '../../shared/commands';
+import { findClip } from '../../shared/model';
 import type { AiOperationDTO } from '../../shared/api-types';
 
 const EXAMPLES = [
+  'Remove the long pauses from the interview and add a slow zoom-in on the last clip',
   'Add a title "My Trip" at the start for 3 seconds and fade the music out over the last 2 seconds',
   'Lower the background music to 30% and add a 1 second dissolve between the first two clips',
   'Create captions for the clip with speech',
@@ -92,6 +97,21 @@ export function AiPanel() {
     setPlan(null);
     if (ok || followUps.length) setApplied(`Applied ${count} change${count === 1 ? '' : 's'}. Use Undo (Ctrl+Z) to revert.`);
     for (const f of followUps) {
+      if (f?.kind === 'removeSilences') {
+        try {
+          const proj = useEditor.getState().project!;
+          const found = findClip(proj, f.clipId);
+          if (!found || (found.clip.kind !== 'video' && found.clip.kind !== 'audio')) throw new Error('clip no longer exists');
+          const buf = await mediaCache.loadAudio(found.clip.assetId);
+          if (!buf) throw new Error('could not decode the clip audio');
+          const ranges = detectSilences(buf, found.clip, { ...DEFAULT_SILENCE, minSilenceSec: f.minSilenceSec });
+          if (ranges.length === 0) st.toast('info', 'No silent pauses found in that clip.');
+          else if (st.edit(`AI: remove ${ranges.length} silences`, (p) => removeRangesFromClip(p, { clipId: f.clipId, ranges })))
+            st.toast('success', `Removed ${ranges.length} silent pause${ranges.length === 1 ? '' : 's'} (${(ranges.reduce((a, r) => a + r.endUs - r.startUs, 0) / 1e6).toFixed(1)}s). Undo to restore.`);
+        } catch (e) {
+          st.toast('error', `Silence removal failed: ${(e as Error).message}`);
+        }
+      }
       if (f?.kind === 'transcribe') {
         try {
           st.toast('info', 'Transcribing for captions…');
