@@ -97,7 +97,7 @@ export function Dashboard() {
             </button>
           </div>
         )}
-        {projects === null && !error && <div className="spinner" aria-label="Loading projects" />}
+        {projects === null && !error && <div className="spinner" role="status" aria-label="Loading projects" />}
         {projects?.length === 0 && (
           <div className="empty">
             <Icon name="film" size={40} />

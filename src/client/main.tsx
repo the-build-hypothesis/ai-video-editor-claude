@@ -46,7 +46,7 @@ function App() {
   }, []);
 
   let page: React.ReactNode;
-  if (!authChecked) page = <div className="center-screen"><div className="spinner" aria-label="Loading" /></div>;
+  if (!authChecked) page = <div className="center-screen"><div className="spinner" role="status" aria-label="Loading" /></div>;
   else if (!user || path === '/login') page = <AuthPage bootError={bootError} />;
   else if (path.startsWith('/project/')) page = <EditorPage key={path} projectId={decodeURIComponent(path.slice('/project/'.length))} />;
   else if (path === '/admin') page = <AdminPage />;

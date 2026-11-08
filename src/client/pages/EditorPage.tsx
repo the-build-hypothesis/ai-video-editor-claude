@@ -85,7 +85,7 @@ export function EditorPage({ projectId }: { projectId: string }) {
   if (!project)
     return (
       <div className="center-screen">
-        <div className="spinner" aria-label="Loading project" />
+        <div className="spinner" role="status" aria-label="Loading project" />
         <p className="muted">Loading project…</p>
       </div>
     );
