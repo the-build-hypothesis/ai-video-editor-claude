@@ -28,7 +28,8 @@ export function CaptionsPanel() {
   const [clipId, setClipId] = useState<string>('');
   useEffect(() => {
     if (selectedSpeech) setClipId(selectedSpeech.id);
-    else if (!speechClips.some((c) => c.id === clipId)) setClipId(speechClips[0]?.id ?? '');
+    // Default to a video clip with audio (likely dialogue) before falling back to audio-only clips (often music).
+    else if (!speechClips.some((c) => c.id === clipId)) setClipId((speechClips.find((c) => c.kind === 'video') ?? speechClips[0])?.id ?? '');
   }, [selectedSpeech?.id, speechClips.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async () => {
