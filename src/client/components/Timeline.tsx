@@ -498,6 +498,8 @@ const ClipView = memo(function ClipView({
         {label}
         {(clip.kind === 'video' || clip.kind === 'audio') && clip.speed !== 1 ? ` · ${clip.speed}×` : ''}
       </div>
+      {clip.kind !== 'audio' &&
+        clip.keyframes.map((k) => <span key={k.tUs} className="kf-diamond" style={{ left: (k.tUs / 1e6) * zoom }} aria-hidden title="Keyframe" />)}
       {fadeInW > 1 && <div className="fade fade-in" style={{ width: fadeInW }} />}
       {fadeOutW > 1 && <div className="fade fade-out" style={{ width: fadeOutW }} />}
       {!track.locked && (

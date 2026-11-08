@@ -5,7 +5,8 @@ import { player, togglePlay, seek, stepFrames } from '../actions';
 import { Icon } from './ui';
 import { formatTimecode } from '../../shared/time';
 import { projectDurationUs, findClip, ASPECT_PRESETS, type AspectPreset } from '../../shared/model';
-import { updateClip, updateSettings } from '../../shared/commands';
+import { setTransformAt, updateSettings } from '../../shared/commands';
+import { effectiveTransform } from '../../shared/timeline-eval';
 
 export function PreviewPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,14 +71,16 @@ export function PreviewPanel() {
   }, [project.settings.width, project.settings.height]);
 
   // Direct manipulation: drag selected visual clip to reposition.
-  const dragRef = useRef<{ clipId: string; startX: number; startY: number; ox: number; oy: number; scale: number } | null>(null);
+  const dragRef = useRef<{ clipId: string; startX: number; startY: number; ox: number; oy: number; scale: number; localUs: number } | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
     const st = useEditor.getState();
     if (st.selection.length !== 1 || st.playing) return;
     const f = findClip(project, st.selection[0]);
     if (!f || f.clip.kind === 'audio' || f.track.locked) return;
     const scale = project.settings.width / box.w;
-    dragRef.current = { clipId: f.clip.id, startX: e.clientX, startY: e.clientY, ox: f.clip.transform.x, oy: f.clip.transform.y, scale };
+    const localUs = Math.max(0, Math.min(f.clip.durationUs, st.playhead - f.clip.timelineStartUs));
+    const cur = effectiveTransform(f.clip, localUs);
+    dragRef.current = { clipId: f.clip.id, startX: e.clientX, startY: e.clientY, ox: cur.x, oy: cur.y, scale, localUs };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -86,7 +89,7 @@ export function PreviewPanel() {
     const x = Math.round(d.ox + (e.clientX - d.startX) * d.scale);
     const y = Math.round(d.oy + (e.clientY - d.startY) * d.scale);
     try {
-      const temp = updateClip(project, { clipId: d.clipId, patch: { transform: { x, y } } }, { assets: getAssetIndex() });
+      const temp = setTransformAt(project, { clipId: d.clipId, localUs: d.localUs, patch: { x, y } });
       player.engine?.setProject(temp, getAssetIndex());
     } catch {
       /* ignore during drag */
@@ -102,7 +105,7 @@ export function PreviewPanel() {
       player.engine?.setProject(project, getAssetIndex());
       return;
     }
-    useEditor.getState().edit('Move on canvas', (p, ctx) => updateClip(p, { clipId: d.clipId, patch: { transform: { x: d.ox + dx, y: d.oy + dy } } }, ctx));
+    useEditor.getState().edit('Move on canvas', (p) => setTransformAt(p, { clipId: d.clipId, localUs: d.localUs, patch: { x: d.ox + dx, y: d.oy + dy } }));
   };
 
   const setAspect = (a: AspectPreset) => {

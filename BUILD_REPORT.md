@@ -137,9 +137,9 @@ See [FEATURE_MATRIX.md](FEATURE_MATRIX.md).
   - All implemented except AUTH-04 (password reset), which is **blocked** with no email provider.
   - **Verified only by manual inspection, not automated tests:** AUD-03 (no manual gain-point editor), PREV-04 (sync checked by eye) and MEDIA-05 (drag-and-drop gestures).
 - **P2:**
-  - Implemented: PREV-07, FX-08, AUD-06, DATA-07.
-  - Partial: MEDIA-09 (bulk import, no proxies), TL-11 (no persistent groups), AI-09 (silence removal only, no filler words), AI-10 (aspect switching, no automatic variants), EXP-09 (in-browser render, not resumable), DATA-08.
-  - Not implemented: FX-07 (keyframes).
+  - Implemented: PREV-07, FX-07, FX-08, AUD-06, DATA-07, AI-10.
+  - Partial: MEDIA-09 (bulk import, no proxies), TL-11 (no persistent groups), AI-09 (silence removal only, no filler words), EXP-09 (in-browser render, not resumable), DATA-08.
+  - FX-07 (keyframes) is also implemented: linear keyframes for X, Y, scale, rotation and opacity, with auto-key.
 
 ## 12.5 Verification
 
@@ -206,7 +206,6 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 - **Same-track overlap allowed with a deterministic top-most rule**, instead of forbidding overlaps. Easier dragging, and the rule is documented.
 - **Deferred:**
   - password reset (needs an email provider);
-  - keyframes;
   - proxy media;
   - filler-word removal (needs word timings stored in the project);
   - server-side rendering for closed tabs.
@@ -229,4 +228,4 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 - Memory use on long or high-resolution projects, since whole source files are loaded into memory for export.
 - The D1 storage cap until R2 is enabled.
 
-**Recommended next milestone:** R2 enablement and verification, cross-browser QA, keyframes, and filler-word cuts from stored word timings.
+**Recommended next milestone:** R2 enablement and verification, cross-browser QA, keyframe easing, and filler-word cuts from stored word timings.

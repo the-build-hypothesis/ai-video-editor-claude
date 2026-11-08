@@ -7,6 +7,7 @@ import { secToUs, usToSec } from '../../shared/time';
 import { deleteSelection, splitAtPlayhead, seek } from '../actions';
 import { mediaCache } from '../engine/media-cache';
 import { detectSilences, DEFAULT_SILENCE } from '../engine/silence';
+import { effectiveTransform } from '../../shared/timeline-eval';
 
 export function Inspector() {
   const project = useEditor((s) => s.project)!;
@@ -190,17 +191,54 @@ function DuckButton({ clip }: { clip: Clip }) {
 }
 
 function TransformSection({ clip, upd }: { clip: Exclude<Clip, { kind: 'audio' }>; upd: (l: string, p: Record<string, unknown>) => boolean }) {
-  const tr = clip.transform;
+  const edit = useEditor((s) => s.edit);
+  const playhead = useEditor((s) => s.playhead);
+  const localUs = Math.max(0, Math.min(clip.durationUs, playhead - clip.timelineStartUs));
+  const animated = clip.keyframes.length > 0;
+  // Animated clips show/edit the values at the playhead (auto-key); otherwise the base transform.
+  const tr = animated ? effectiveTransform(clip, localUs) : clip.transform;
+  const setT = (label: string, patch: Record<string, number>) => edit(label, (p) => cmd.setTransformAt(p, { clipId: clip.id, localUs, patch }));
+  const inClip = playhead >= clip.timelineStartUs && playhead <= clipEndUs(clip);
   return (
     <section className="insp-section">
-      <h4>Position & size</h4>
+      <h4>Position & size {animated && <span className="pill">animated · editing at playhead</span>}</h4>
       <div className="grid2">
-        <NumField label="X" suffix="px" value={tr.x} step={1} decimals={0} onCommit={(v) => upd('Position X', { transform: { x: v } })} />
-        <NumField label="Y" suffix="px" value={tr.y} step={1} decimals={0} onCommit={(v) => upd('Position Y', { transform: { y: v } })} />
-        <NumField label="Scale" suffix="%" value={tr.scale * 100} step={1} min={1} max={2000} decimals={0} onCommit={(v) => upd('Scale', { transform: { scale: v / 100 } })} />
-        <NumField label="Rotation" suffix="°" value={tr.rotation} step={1} min={-360} max={360} decimals={0} onCommit={(v) => upd('Rotation', { transform: { rotation: v } })} />
+        <NumField label="X" suffix="px" value={tr.x} step={1} decimals={0} onCommit={(v) => setT('Position X', { x: v })} />
+        <NumField label="Y" suffix="px" value={tr.y} step={1} decimals={0} onCommit={(v) => setT('Position Y', { y: v })} />
+        <NumField label="Scale" suffix="%" value={tr.scale * 100} step={1} min={1} max={2000} decimals={0} onCommit={(v) => setT('Scale', { scale: v / 100 })} />
+        <NumField label="Rotation" suffix="°" value={tr.rotation} step={1} min={-360} max={360} decimals={0} onCommit={(v) => setT('Rotation', { rotation: v })} />
       </div>
-      <RangeField label="Opacity" value={tr.opacity} min={0} max={1} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => upd('Opacity', { transform: { opacity: v } })} />
+      <RangeField label="Opacity" value={tr.opacity} min={0} max={1} step={0.01} format={(v) => `${Math.round(v * 100)}%`} onCommit={(v) => setT('Opacity', { opacity: v })} />
+      <div className="keyframes" data-testid="keyframes">
+        <div className="row between">
+          <h5>Keyframes ({clip.keyframes.length})</h5>
+          <button
+            className="btn btn-sm"
+            disabled={!inClip}
+            title={inClip ? 'Record the current position/size/rotation/opacity at the playhead' : 'Move the playhead over this clip first'}
+            onClick={() => edit('Add keyframe', (p) => cmd.setTransformAt(p, { clipId: clip.id, localUs, patch: {}, forceKeyframe: true }))}
+            data-testid="add-keyframe"
+          >
+            ◆ Add at playhead
+          </button>
+        </div>
+        {clip.keyframes.length === 0 && <p className="hint">Add two or more keyframes at different times to animate position, scale, rotation and opacity (linear). With keyframes, edits apply at the playhead.</p>}
+        <ul className="kf-list">
+          {clip.keyframes.map((k) => (
+            <li key={k.tUs} className={Math.abs(k.tUs - localUs) <= 20_000 ? 'current' : ''}>
+              <button className="btn btn-sm btn-ghost" onClick={() => seek(clip.timelineStartUs + k.tUs)} title="Jump to keyframe">
+                ◆ {usToSec(clip.timelineStartUs + k.tUs).toFixed(2)}s
+              </button>
+              <span className="muted small">
+                x {Math.round(k.x)} · y {Math.round(k.y)} · {Math.round(k.scale * 100)}% · {Math.round(k.opacity * 100)}%
+              </span>
+              <button className="icon-btn xs" aria-label={`Delete keyframe at ${usToSec(k.tUs).toFixed(2)}s`} onClick={() => edit('Delete keyframe', (p) => cmd.removeKeyframe(p, { clipId: clip.id, tUs: k.tUs }))}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
       {clip.kind !== 'text' && (
         <>
           <label className="field">
@@ -221,7 +259,7 @@ function TransformSection({ clip, upd }: { clip: Exclude<Clip, { kind: 'audio' }
         </>
       )}
       <div className="row">
-        <button className="btn btn-sm" onClick={() => upd('Center', { transform: { x: 0, y: 0 } })}>
+        <button className="btn btn-sm" onClick={() => setT('Center', { x: 0, y: 0 })}>
           Center
         </button>
         <button className="btn btn-sm" onClick={() => upd('Reset transform', { transform: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, crop: { left: 0, right: 0, top: 0, bottom: 0 } } })}>

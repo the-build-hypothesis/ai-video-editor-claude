@@ -7,6 +7,7 @@
  * timelineStartUs is drawn on top (ties: later array position). Audio: overlapping clips are mixed.
  * Track order: visual tracks earlier in project.tracks are composited on top of later ones.
  */
+import { keyframeValuesAt, effectiveTransform } from './timeline-eval';
 import {
   type AssetIndex,
   type Clip,
@@ -14,6 +15,7 @@ import {
   type Track,
   type TextClip,
   type Transition,
+  type Transform,
   ProjectSchema,
   ClipSchema,
   TextStyleSchema,
@@ -204,6 +206,14 @@ export function trimClip(
   if (clip.kind !== 'text') {
     clip.sourceStartUs = Math.max(0, Math.round(clip.sourceStartUs + (newStart - oldStart) * speed));
   }
+  if ('keyframes' in clip && clip.keyframes.length && newStart !== oldStart) {
+    // Keyframes are clip-relative: keep them at the same timeline positions.
+    const shift = newStart - oldStart;
+    const keys = clip.keyframes;
+    const atStart = keyframeValuesAt(keys, shift)!;
+    const moved = keys.map((k) => ({ ...k, tUs: k.tUs - shift })).filter((k) => k.tUs > 0);
+    clip.keyframes = [{ tUs: 0, ...atStart }, ...moved].slice(0, 100);
+  }
   clip.timelineStartUs = newStart;
   clip.durationUs = newEnd - newStart;
   const max = maxDurationUs(clip, ctx);
@@ -237,6 +247,13 @@ export function splitClip(p0: Project, args: { clipId: string; atUs: number; new
     if (pts.some((g) => g.tUs < leftDur) && !right.gainPoints.some((g) => g.tUs === 0)) right.gainPoints.unshift({ tUs: 0, gain: atCut });
     clip.gainPoints = pts.filter((g) => g.tUs < leftDur);
     if (pts.some((g) => g.tUs >= leftDur)) clip.gainPoints.push({ tUs: leftDur, gain: atCut });
+  }
+  if ('keyframes' in right && 'keyframes' in clip && clip.keyframes.length) {
+    // Split keyframes; add an interpolated key at the cut on both sides so motion is unchanged.
+    const keys = clip.keyframes;
+    const atCut = keyframeValuesAt(keys, leftDur)!;
+    right.keyframes = [{ tUs: 0, ...atCut }, ...keys.filter((k) => k.tUs > leftDur).map((k) => ({ ...k, tUs: k.tUs - leftDur }))];
+    clip.keyframes = [...keys.filter((k) => k.tUs < leftDur), { tUs: leftDur, ...atCut }];
   }
   right.fadeInUs = 0;
   clip.durationUs = leftDur;
@@ -521,5 +538,46 @@ export function reframeForAspect(p0: Project, args: { aspect: AspectPreset; name
     }
   }
   p.captions.style.fontSize = Math.max(12, Math.round(p.captions.style.fontSize * Math.max(sText, 0.75)));
+  return finalize(p);
+}
+
+/**
+ * FX-07 "auto-key": set transform values for a visual clip at a clip-local time. Without keyframes
+ * this edits the base transform; once a clip is animated it upserts a keyframe at that time.
+ */
+export function setTransformAt(p0: Project, args: { clipId: string; localUs: number; patch: Partial<Pick<Transform, 'x' | 'y' | 'scale' | 'rotation' | 'opacity'>> & Record<string, unknown>; forceKeyframe?: boolean; toleranceUs?: number }): Project {
+  const p = clone(p0);
+  const { clip } = requireClip(p, args.clipId);
+  if (clip.kind === 'audio') throw new CommandError('Audio clips have no transform');
+  const animated = clip.keyframes.length > 0 || args.forceKeyframe;
+  if (!animated) {
+    const merged = TransformSchema.safeParse({ ...clip.transform, ...args.patch });
+    if (!merged.success) throw new CommandError('Invalid transform values');
+    clip.transform = merged.data;
+    return finalize(p);
+  }
+  const t = Math.max(0, Math.min(clip.durationUs, Math.round(args.localUs)));
+  const cur = effectiveTransform(clip, t);
+  const key = { tUs: t, x: cur.x, y: cur.y, scale: cur.scale, rotation: cur.rotation, opacity: cur.opacity };
+  for (const k of ['x', 'y', 'scale', 'rotation', 'opacity'] as const) if (typeof args.patch[k] === 'number') key[k] = args.patch[k] as number;
+  const tol = args.toleranceUs ?? 20_000;
+  // Non-animated properties (fit/crop) still go to the base transform.
+  const rest = Object.fromEntries(Object.entries(args.patch).filter(([k]) => !['x', 'y', 'scale', 'rotation', 'opacity'].includes(k)));
+  if (Object.keys(rest).length) clip.transform = TransformSchema.parse({ ...clip.transform, ...rest });
+  clip.keyframes = [...clip.keyframes.filter((k) => Math.abs(k.tUs - t) > tol), key].sort((a, b) => a.tUs - b.tUs).slice(0, 100);
+  return finalize(p);
+}
+
+export function removeKeyframe(p0: Project, args: { clipId: string; tUs: number }): Project {
+  const p = clone(p0);
+  const { clip } = requireClip(p, args.clipId);
+  if (clip.kind === 'audio') return p0;
+  const keys = clip.keyframes;
+  if (keys.length === 1) {
+    // Removing the last key bakes its values into the base transform (no jump).
+    const k = keys[0];
+    clip.transform = { ...clip.transform, x: k.x, y: k.y, scale: k.scale, rotation: k.rotation, opacity: k.opacity };
+  }
+  clip.keyframes = keys.filter((k) => k.tUs !== args.tUs);
   return finalize(p);
 }

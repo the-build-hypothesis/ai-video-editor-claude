@@ -94,8 +94,8 @@ export function renderFrame(ctx: Ctx2D, p: Project, t: number, resolve: SourceRe
       if (!r) continue;
       ctx.save();
       ctx.globalAlpha = 1;
-      ctx.translate(W / 2 + layer.clip.transform.x, H / 2 + layer.clip.transform.y);
-      ctx.rotate((layer.clip.transform.rotation * Math.PI) / 180);
+      ctx.translate(W / 2 + layer.transform.x, H / 2 + layer.transform.y);
+      ctx.rotate((layer.transform.rotation * Math.PI) / 180);
       ctx.strokeStyle = '#8b7dff';
       ctx.lineWidth = 3 / opts.scale;
       ctx.setLineDash([12 / opts.scale, 8 / opts.scale]);
@@ -121,18 +121,18 @@ export function renderFrame(ctx: Ctx2D, p: Project, t: number, resolve: SourceRe
 function layerBounds(ctx: Ctx2D, layer: VisualLayer, resolve: SourceResolver, W: number, H: number) {
   if (layer.clip.kind === 'text') {
     const m = measureText(ctx, layer.clip, W);
-    return { w: m.boxW * layer.clip.transform.scale, h: m.boxH * layer.clip.transform.scale };
+    return { w: m.boxW * layer.transform.scale, h: m.boxH * layer.transform.scale };
   }
   const src = resolve(layer);
   if (!src) return null;
-  const c = layer.clip.transform.crop;
-  return fitRect(src.width * (1 - c.left - c.right), src.height * (1 - c.top - c.bottom), W, H, layer.clip.transform);
+  const c = layer.transform.crop;
+  return fitRect(src.width * (1 - c.left - c.right), src.height * (1 - c.top - c.bottom), W, H, layer.transform);
 }
 
 function drawMedia(ctx: Ctx2D, layer: VisualLayer, src: DrawableSource | null, W: number, H: number) {
   if (!src || src.width === 0 || src.height === 0) return;
   const clip = layer.clip as Exclude<typeof layer.clip, TextClip>;
-  const tr = clip.transform;
+  const tr = layer.transform;
   const cr = tr.crop;
   const sx = src.width * cr.left;
   const sy = src.height * cr.top;
@@ -196,7 +196,7 @@ function drawText(ctx: Ctx2D, clip: TextClip, layer: VisualLayer, W: number, H: 
   if (!clip.text.trim()) return;
   const anim = textAnimation(clip, layer.localUs);
   const st = clip.style;
-  const tr = clip.transform;
+  const tr = layer.transform;
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity * tr.opacity * anim.opacity));
   ctx.translate(W / 2 + tr.x, H / 2 + tr.y + anim.dy);

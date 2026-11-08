@@ -21,8 +21,10 @@ export const storageBackend = (env: Env) => (env.MEDIA ? 'r2' : 'd1');
 export async function ensureCapacity(env: Env, incomingBytes: number): Promise<void> {
   if (env.MEDIA) return;
   const limitMb = Number(env.D1_MAX_DB_MB ?? '450') || 450;
-  const r = await env.DB.prepare('SELECT 1').run();
-  const size = Number((r.meta as { size_after?: number }).size_after ?? 0);
+  // Logical bytes stored (SQLite reuses pages freed by deletes, so this — not the file size —
+  // is what determines whether new data fits).
+  const r = await env.DB.prepare('SELECT COALESCE(SUM(size), 0) AS b FROM blob_objects').first<{ b: number }>();
+  const size = Number(r?.b ?? 0);
   if (size + incomingBytes > limitMb * 1024 * 1024) {
     throw new ApiError(507, 'storage_full', 'Server media storage is full. Delete unused media or exports, or ask the administrator to enable R2 storage.');
   }

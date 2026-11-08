@@ -12,6 +12,8 @@ import {
   type Track,
   type VisualClip,
   type Transition,
+  type Transform,
+  type Keyframe,
   clipEndUs,
   clipSpeed,
 } from './model';
@@ -28,6 +30,32 @@ export interface VisualLayer {
   opacity: number;
   /** Wipe reveal: fraction of the frame width revealed, from left ('wipeleft') or right ('wiperight'). */
   wipe: { from: 'left' | 'right'; progress: number } | null;
+  /** Effective transform at this time (base transform with keyframe animation applied). */
+  transform: Transform;
+}
+
+/** Keyframe values at local time (linear interpolation, held before first / after last key). */
+export function keyframeValuesAt(keys: Keyframe[], localUs: number): Omit<Keyframe, 'tUs'> | null {
+  if (!keys.length) return null;
+  const k = [...keys].sort((a, b) => a.tUs - b.tUs);
+  const pick = (a: Keyframe) => ({ x: a.x, y: a.y, scale: a.scale, rotation: a.rotation, opacity: a.opacity });
+  if (localUs <= k[0].tUs) return pick(k[0]);
+  for (let i = 1; i < k.length; i++) {
+    if (localUs <= k[i].tUs) {
+      const a = k[i - 1];
+      const b = k[i];
+      const u = b.tUs === a.tUs ? 1 : (localUs - a.tUs) / (b.tUs - a.tUs);
+      const lerp = (p: number, q: number) => p + (q - p) * u;
+      return { x: lerp(a.x, b.x), y: lerp(a.y, b.y), scale: lerp(a.scale, b.scale), rotation: lerp(a.rotation, b.rotation), opacity: lerp(a.opacity, b.opacity) };
+    }
+  }
+  return pick(k[k.length - 1]);
+}
+
+/** Transform of a visual clip at a local time (keyframes override x/y/scale/rotation/opacity). */
+export function effectiveTransform(clip: VisualClip, localUs: number): Transform {
+  const v = keyframeValuesAt(clip.keyframes ?? [], localUs);
+  return v ? { ...clip.transform, ...v } : clip.transform;
 }
 
 export function fadeFactor(clip: Clip, t: number): number {
@@ -79,7 +107,8 @@ export function evaluateVisualLayers(p: Project, t: number): VisualLayer[] {
     if (track.kind !== 'video' || track.hidden) continue;
     const trackLayers: (VisualLayer & { order: number })[] = [];
     const push = (clip: VisualClip, opacity: number, wipe: VisualLayer['wipe'], order: number) => {
-      trackLayers.push({ clip, track, sourceUs: sourceTimeAt(clip, t), localUs: t - clip.timelineStartUs, opacity, wipe, order });
+      const localUs = t - clip.timelineStartUs;
+      trackLayers.push({ clip, track, sourceUs: sourceTimeAt(clip, t), localUs, opacity, wipe, order, transform: effectiveTransform(clip, localUs) });
     };
     const handled = new Set<string>();
     // Transitions first, so we know which clips are part of a transition at t.

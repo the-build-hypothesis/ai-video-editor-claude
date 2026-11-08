@@ -83,7 +83,7 @@ Limits: 1 GB and 20 minutes per file (multipart above 90 MB); 2 GB per user (500
 | FX-04 | P1 | implemented | Dissolve, dip to black, wipe right and wipe left, with editable duration centered on the cut. U: timeline-eval. |
 | FX-05 | P1 | implemented | Brightness, contrast and saturation through canvas `filter`. Not supported in Safari, which lacks `ctx.filter` (documented). |
 | FX-06 | P1 | implemented | Speed 0.25×–4×; duration rescales; audio pitch follows speed (documented). |
-| FX-07 | P2 | not implemented | No keyframes. The only automation is clip gain points (audio). |
+| FX-07 | P2 | implemented | Linear keyframes for X, Y, scale, rotation and opacity on video, image and text clips. "Add at playhead" creates a key. Once a clip is animated, inspector edits and preview drags auto-key at the playhead. Keys show as diamonds on the clip, with a list to jump to or delete them. Keys survive split and trim-start, and preview and export share one evaluation. U: keyframes tests. E: `keyframes.spec` (motion checked in the exported MP4). No easing curves. |
 | FX-08 | P2 | implemented | Title, lower-third and subtitle presets; animations: fade, slide up, pop, typewriter. |
 
 ## 4.7 Audio

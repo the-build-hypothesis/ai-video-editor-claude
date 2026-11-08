@@ -1588,3 +1588,37 @@ kbd {
     max-height: 50vh;
   }
 }
+.kf-diamond {
+  position: absolute;
+  bottom: 3px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4px;
+  background: #ffd43b;
+  border: 1px solid #000;
+  transform: rotate(45deg);
+  pointer-events: none;
+  z-index: 1;
+}
+.kf-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.kf-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 0 4px;
+}
+.kf-list li.current {
+  background: #2f2a66;
+}
+.keyframes {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}

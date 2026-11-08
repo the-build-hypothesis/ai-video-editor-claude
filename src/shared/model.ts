@@ -60,6 +60,18 @@ export const TransitionSchema = z.object({
 });
 export type Transition = z.infer<typeof TransitionSchema>;
 
+/** Transform keyframe (FX-07): animated values at a time relative to clip start; linear interpolation. */
+export const KeyframeSchema = z.object({
+  tUs: z.number().int().min(0).max(MAX_PROJECT_DURATION_US),
+  x: z.number().min(-10000).max(10000),
+  y: z.number().min(-10000).max(10000),
+  scale: z.number().min(0.01).max(20),
+  rotation: z.number().min(-360).max(360),
+  opacity: z.number().min(0).max(1),
+});
+export type Keyframe = z.infer<typeof KeyframeSchema>;
+const keyframesField = z.array(KeyframeSchema).max(100).default([]);
+
 /** Gain automation point, time relative to clip start. */
 export const GainPointSchema = z.object({ tUs: us, gain: z.number().min(0).max(4) });
 
@@ -88,6 +100,7 @@ export const VideoClipSchema = z.object({
   adjust: AdjustSchema.default({ brightness: 0, contrast: 0, saturation: 0 }),
   transitionIn: TransitionSchema.nullable().default(null),
   gainPoints: z.array(GainPointSchema).max(64).default([]),
+  keyframes: keyframesField,
 });
 export const ImageClipSchema = z.object({
   ...mediaBase,
@@ -95,6 +108,7 @@ export const ImageClipSchema = z.object({
   transform: TransformSchema.default(TransformSchema.parse({})),
   adjust: AdjustSchema.default({ brightness: 0, contrast: 0, saturation: 0 }),
   transitionIn: TransitionSchema.nullable().default(null),
+  keyframes: keyframesField,
 });
 export const AudioClipSchema = z.object({
   ...mediaBase,
@@ -131,6 +145,7 @@ export const TextClipSchema = z.object({
   animation: z.enum(TEXT_ANIMATIONS).default('none'),
   /** Optional preset tag (e.g. lower third) used by UI only. */
   preset: z.string().max(40).nullable().default(null),
+  keyframes: keyframesField,
 });
 
 export const ClipSchema = z.discriminatedUnion('kind', [VideoClipSchema, ImageClipSchema, AudioClipSchema, TextClipSchema]);
