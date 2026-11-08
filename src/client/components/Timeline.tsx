@@ -79,7 +79,7 @@ export function Timeline() {
     let sel = st.selection;
     if (e.shiftKey || e.metaKey || e.ctrlKey) sel = sel.includes(clip.id) ? sel.filter((x) => x !== clip.id) : [...sel, clip.id];
     else if (!sel.includes(clip.id)) sel = [clip.id];
-    st.set({ selection: sel, selectedCaption: null, rightTab: st.rightTab === 'captions' ? 'inspector' : st.rightTab });
+    st.set({ selection: sel, selectedCaption: null, rightTab: st.rightTab === 'captions' || st.rightTab === 'export' ? 'inspector' : st.rightTab });
     if (track.locked) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     if (edge) setDrag({ kind: 'trim', id: clip.id, edge, startX: e.clientX, deltaUs: 0 });

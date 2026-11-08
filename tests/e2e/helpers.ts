@@ -46,7 +46,11 @@ export async function uploadFixtures(page: Page, names: string[]) {
 }
 
 export async function addAsset(page: Page, name: string) {
+  const mediaTab = page.getByRole('tab', { name: 'Media', exact: true });
+  if ((await mediaTab.getAttribute('aria-selected')) !== 'true') await mediaTab.click();
   await page.locator(`[data-testid="asset"][data-asset-name="${name}"]`).getByTestId('add-asset').click();
+  // The new clip is selected; wait until the inspector shows it before editing fields.
+  await expect(page.getByTestId('inspector')).toContainText(`Source: ${name}`);
 }
 
 export async function waitSaved(page: Page) {

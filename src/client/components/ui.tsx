@@ -238,6 +238,7 @@ export function NumField({
         <input
           type="number"
           className="input input-num"
+          aria-label={label}
           value={text}
           step={step}
           min={min}
@@ -254,7 +255,7 @@ export function NumField({
             e.stopPropagation();
           }}
         />
-        {suffix && <span className="suffix">{suffix}</span>}
+        {suffix && <span className="suffix" aria-hidden="true">{suffix}</span>}
       </span>
     </label>
   );

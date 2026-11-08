@@ -112,11 +112,12 @@ export function addClip(p0: Project, args: { trackId: string; clip: unknown }, c
 export function makeClipForAsset(asset: AssetIndex[string], timelineStartUs: number, project: Project): Clip {
   const base = { id: newId('c'), timelineStartUs: Math.max(0, Math.round(timelineStartUs)), assetId: asset.id, name: asset.name };
   if (asset.kind === 'image') {
-    return ClipSchema.parse({ ...base, kind: 'image', durationUs: 5_000_000, transform: { ...TransformSchema.parse({}), fit: 'contain' } });
+    // Images smaller than the frame (logos, stickers) keep their native size; larger ones are fitted.
+    const fitsNatively = !!asset.width && !!asset.height && asset.width <= project.settings.width && asset.height <= project.settings.height;
+    return ClipSchema.parse({ ...base, kind: 'image', durationUs: 5_000_000, transform: { ...TransformSchema.parse({}), fit: fitsNatively ? 'none' : 'contain' } });
   }
   const dur = Math.max(MIN_DURATION_US, asset.durationUs ?? 5_000_000);
   if (asset.kind === 'audio') return ClipSchema.parse({ ...base, kind: 'audio', durationUs: dur });
-  void project;
   return ClipSchema.parse({ ...base, kind: 'video', durationUs: dur });
 }
 
