@@ -6,8 +6,9 @@
   --line: #2e3442;
   --text: #e8eaf0;
   --muted: #9aa3b5;
-  --accent: #7c6cff;
+  --accent: #5b4ae6;
   --accent2: #9d91ff;
+  --accent-hover: #4b3ad4;
   --accent-ink: #ffffff;
   --danger: #ff5d6c;
   --ok: #3ddc97;
@@ -163,7 +164,7 @@ h5 {
   font-weight: 600;
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent2);
+  background: var(--accent-hover);
 }
 .btn-danger {
   background: #4a1d24;
@@ -370,8 +371,9 @@ fieldset.plain {
   padding-left: 18px;
 }
 .banner {
-  background: #2a2350;
-  border: 1px solid #463b8a;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
   padding: 10px 14px;
   border-radius: var(--radius);
   margin-bottom: 16px;

@@ -225,6 +225,7 @@ export function Timeline() {
           }
         }}
         data-testid={`lane-${track.name}`}
+        role="group"
         aria-label={`${track.name} ${track.kind} track`}
       >
         {dropHint?.trackId === track.id && <div className="drop-hint" style={{ left: usToX(dropHint.us) }} />}
