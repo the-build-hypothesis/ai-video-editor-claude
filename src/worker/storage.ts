@@ -48,13 +48,17 @@ export async function putObject(env: Env, key: string, body: ReadableStream | Ar
 }
 
 export async function getObject(env: Env, key: string, range?: { offset: number; length: number }) {
-  return bucket(env).get(key, range ? { range } : undefined);
+  const obj = await bucket(env).get(key, range ? { range } : undefined);
+  // Objects written before R2 was enabled still live in the D1 store: fall back to it.
+  if (!obj && env.MEDIA) return new D1BlobStore(env.DB).get(key, range ? { range } : undefined) as unknown as Promise<R2ObjectBody | null>;
+  return obj;
 }
 
 export async function deleteObjects(env: Env, keyList: string[]): Promise<void> {
   for (let i = 0; i < keyList.length; i += 1000) {
     const batch = keyList.slice(i, i + 1000);
     if (batch.length) await bucket(env).delete(batch);
+    if (batch.length && env.MEDIA) await new D1BlobStore(env.DB).delete(batch); // legacy D1 copies
   }
 }
 
@@ -69,6 +73,18 @@ export async function deletePrefix(env: Env, prefix: string): Promise<number> {
     n += ks.length;
     cursor = list.truncated ? list.cursor : undefined;
   } while (cursor);
+  if (env.MEDIA) {
+    // Also purge legacy objects stored in D1 before R2 was enabled.
+    const d1 = new D1BlobStore(env.DB);
+    let c2: string | undefined;
+    do {
+      const list = await d1.list({ prefix, cursor: c2, limit: 1000 });
+      const ks = list.objects.map((o) => o.key);
+      if (ks.length) await d1.delete(ks);
+      n += ks.length;
+      c2 = list.truncated ? list.cursor : undefined;
+    } while (c2);
+  }
   return n;
 }
 
