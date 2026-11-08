@@ -170,3 +170,18 @@ export function pasteClipboard() {
 function allClipIds(p: Project | null): string[] {
   return p ? p.tracks.flatMap((t) => t.clips.map((c) => c.id)) : [];
 }
+
+/** Move selected clips by a number of frames (keyboard nudge). */
+export function nudgeSelection(frames: number) {
+  const st = useEditor.getState();
+  const p = st.project;
+  if (!p || !st.selection.length) return;
+  const delta = (frames * 1e6) / p.settings.fps;
+  st.edit(frames < 0 ? 'Nudge left' : 'Nudge right', (pp) =>
+    st.selection.reduce((acc, id) => {
+      const f = findClip(acc, id);
+      if (!f || f.track.locked) return acc;
+      return cmd.moveClip(acc, { clipId: id, timelineStartUs: snapToFrame(Math.max(0, f.clip.timelineStartUs + delta), pp.settings.fps) });
+    }, pp),
+  );
+}

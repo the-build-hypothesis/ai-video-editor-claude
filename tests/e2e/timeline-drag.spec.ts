@@ -86,4 +86,12 @@ test('drag move, snap, trim edges, drop from library, move across tracks', async
   // Undo restores it to V2.
   await page.getByTestId('undo').click();
   await expect(page.getByTestId('lane-V2').locator('[data-clip-kind="image"]')).toHaveCount(1);
+
+  // Keyboard nudge: Alt+Shift+→ moves the selected video clip by one second.
+  await page.locator('[data-clip-kind="video"]').first().click({ position: { x: 30, y: 20 } });
+  const [n0, n1] = await range(page, '[data-clip-kind="video"]');
+  await page.keyboard.press('Alt+Shift+ArrowRight');
+  await expectRange(page, '[data-clip-kind="video"]', n0 + 1, n1 + 1, 0.05);
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect.poll(async () => (await range(page, '[data-clip-kind="video"]'))[0]).toBeCloseTo(n0 + 1 - 1 / 30, 1);
 });

@@ -54,6 +54,7 @@ export function EditorPage({ projectId }: { projectId: string }) {
       else if (mod && (k === 'a' || k === 'A')) st.select(st.project?.tracks.flatMap((t) => (t.locked ? [] : t.clips.map((c) => c.id))) ?? []);
       else if (!mod && (k === 's' || k === 'S')) A.splitAtPlayhead();
       else if (k === 'Delete' || k === 'Backspace') A.deleteSelection(e.shiftKey);
+      else if (e.altKey && (k === 'ArrowLeft' || k === 'ArrowRight') && st.selection.length) A.nudgeSelection((k === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? st.project?.settings.fps ?? 30 : 1));
       else if (k === 'ArrowLeft') A.stepFrames(e.shiftKey ? -(st.project?.settings.fps ?? 30) : -1);
       else if (k === 'ArrowRight') A.stepFrames(e.shiftKey ? st.project?.settings.fps ?? 30 : 1);
       else if (k === 'Home') A.seek(0);
@@ -269,6 +270,7 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
     ['Space / K', 'Play / pause'],
     ['← / →', 'Step one frame'],
     ['Shift + ← / →', 'Step one second'],
+    ['Alt + ← / →', 'Nudge selected clips by one frame (Shift: one second)'],
     ['Home / End', 'Jump to start / end'],
     ['S', 'Split at playhead'],
     ['Delete / Backspace', 'Delete selected clips (Shift: ripple delete)'],
