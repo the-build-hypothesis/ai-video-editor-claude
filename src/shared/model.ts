@@ -195,6 +195,11 @@ export const CaptionsSchema = z.object({
   burnIn: z.boolean().default(true),
   style: CaptionStyleSchema.default(CaptionStyleSchema.parse({})),
   segments: z.array(CaptionSegmentSchema).max(5000).default([]),
+  /** Detected filler words (um/uh…) awaiting review; timeline µs, tied to the source clip. */
+  fillers: z
+    .array(z.object({ clipId: id, startUs: us, endUs: us, word: z.string().max(40) }))
+    .max(2000)
+    .default([]),
   /** Asset and language the captions were generated from (informational). */
   sourceAssetId: id.nullable().default(null),
   language: z.string().max(20).nullable().default(null),

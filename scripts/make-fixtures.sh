@@ -17,5 +17,7 @@ head -c 200000 /dev/urandom > corrupt.mp4
 $FF -y -loglevel error -f lavfi -i "testsrc=size=1280x720:rate=30" -f lavfi -i "sine=f=600:sample_rate=48000" -t 6 -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/ff_rot_src.mp4
 $FF -y -loglevel error -display_rotation 90 -i /tmp/ff_rot_src.mp4 -c copy clip-d-rotated-phone.mp4
 $FF -y -loglevel error -f lavfi -i "testsrc2=size=1920x1080:rate=60" -f lavfi -i "sine=f=440:sample_rate=44100" -t 4 -c:v libx264 -profile:v high -bf 3 -g 120 -crf 32 -pix_fmt yuv420p -c:a aac -ar 44100 clip-e-1080p60-bframes.mp4
+# clip-f-fillers.mp4: needs fillers.wav (TTS of "Um, so today, uh, we are testing the, um, filler word removal. Uh, it should cut these out.")
+[ -f fillers.wav ] && $FF -y -loglevel error -f lavfi -i "color=c=0x224466:s=640x360:r=30" -i fillers.wav -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac clip-f-fillers.mp4
 echo "fixtures regenerated"
 $FF -y -loglevel error -f lavfi -i "sine=f=500:sample_rate=48000:duration=1" -f lavfi -i "anullsrc=r=48000:cl=mono" -f lavfi -i "sine=f=700:sample_rate=48000:duration=1" -filter_complex "[1]atrim=duration=1.5[s];[0][s][2]concat=n=3:v=0:a=1" -ac 1 tones-with-gap.wav

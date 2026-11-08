@@ -522,6 +522,10 @@ export function removeRangesFromClip(p0: Project, args: { clipId: string; ranges
         if (s.startUs < r.endUs && s.endUs > r.endUs) return { ...s, startUs: r.startUs, endUs: s.endUs - len };
         return s;
       });
+    q.captions.fillers = q.captions.fillers
+      .filter((f) => !(f.startUs >= r.startUs && f.endUs <= r.endUs))
+      .map((f) => (f.startUs >= r.endUs ? { ...f, startUs: f.startUs - len, endUs: f.endUs - len } : f))
+      .filter((f) => f.endUs <= r.startUs || f.startUs >= r.startUs);
     p = finalize(q);
   }
   return p;

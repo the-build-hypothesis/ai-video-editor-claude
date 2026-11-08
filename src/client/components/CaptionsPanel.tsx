@@ -15,6 +15,7 @@ export function CaptionsPanel() {
   const edit = useEditor((s) => s.edit);
   const caps = project.captions;
   const [busy, setBusy] = useState<string | null>(null);
+  const [detectFillers, setDetectFillers] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const speechClips = project.tracks.flatMap((t) =>
@@ -41,7 +42,7 @@ export function CaptionsPanel() {
     setBusy('Starting…');
     setError(null);
     try {
-      const n = await transcribeClip(clipId, { replace, onStatus: setBusy });
+      const n = await transcribeClip(clipId, { replace, onStatus: setBusy, detectFillers });
       useEditor.getState().toast('success', `Created ${n} caption segments — review and correct them below.`);
     } catch (e) {
       setError((e as Error).message);
@@ -95,6 +96,9 @@ export function CaptionsPanel() {
                 'Transcribe & create captions'
               )}
             </button>
+            <label className="check">
+              <input type="checkbox" checked={detectFillers} onChange={(e) => setDetectFillers(e.target.checked)} data-testid="detect-fillers" /> Detect filler words (um, uh) for removal
+            </label>
             <p className="hint">Only the trimmed part of the clip is sent to OpenAI (as 16 kHz mono audio). Captions are placed at the clip's timeline position.</p>
           </>
         )}
@@ -107,6 +111,8 @@ export function CaptionsPanel() {
           </div>
         )}
       </section>
+
+      {caps.fillers.length > 0 && <FillerSection />}
 
       <section className="insp-section">
         <h4>Display</h4>
@@ -213,5 +219,49 @@ function CaptionRow({ seg, selected }: { seg: CaptionSegment; selected: boolean 
         data-testid="caption-text"
       />
     </li>
+  );
+}
+
+/** AI-09: review and cut detected filler words (from the transcription's word timings). */
+function FillerSection() {
+  const project = useEditor((s) => s.project)!;
+  const edit = useEditor((s) => s.edit);
+  const fillers = project.captions.fillers;
+  const total = fillers.reduce((a, f) => a + f.endUs - f.startUs, 0);
+  const removeAll = () => {
+    edit(`Remove ${fillers.length} filler words`, (p0) => {
+      let p = p0;
+      // Group by the clip piece that currently contains each filler (clips may have been cut since).
+      const groups = new Map<string, { startUs: number; endUs: number }[]>();
+      for (const f of p.captions.fillers) {
+        const piece = p.tracks.flatMap((t) => t.clips).find((c) => (c.id === f.clipId || c.id.startsWith(f.clipId + '_')) && c.timelineStartUs <= f.startUs && c.timelineStartUs + c.durationUs >= f.endUs);
+        if (piece) groups.set(piece.id, [...(groups.get(piece.id) ?? []), { startUs: f.startUs, endUs: f.endUs }]);
+      }
+      // Later pieces first so earlier positions stay valid.
+      const order = [...groups.entries()].sort((a, b) => Math.max(...b[1].map((r) => r.startUs)) - Math.max(...a[1].map((r) => r.startUs)));
+      for (const [clipId, ranges] of order) p = cmd.removeRangesFromClip(p, { clipId, ranges });
+      return cmd.updateCaptionSettings(p, { patch: { fillers: [] } });
+    });
+  };
+  return (
+    <section className="insp-section" data-testid="filler-section">
+      <h4>Filler words ({fillers.length})</h4>
+      <div className="row wrap">
+        {fillers.slice(0, 40).map((f, i) => (
+          <button key={i} className="chip filler-chip" onClick={() => seek(Math.max(0, f.startUs - 500_000))} title="Jump just before this filler to preview it">
+            “{f.word}” {formatShort(f.startUs)}
+          </button>
+        ))}
+      </div>
+      <div className="row">
+        <button className="btn btn-sm btn-primary" onClick={removeAll} data-testid="remove-fillers">
+          Cut all {fillers.length} (−{(total / 1e6).toFixed(1)}s)
+        </button>
+        <button className="btn btn-sm btn-ghost" onClick={() => edit('Dismiss filler words', (p) => cmd.updateCaptionSettings(p, { patch: { fillers: [] } }))}>
+          Dismiss
+        </button>
+      </div>
+      <p className="hint">Cutting ripples the clip's track closed and shifts captions. One undo restores everything.</p>
+    </section>
   );
 }

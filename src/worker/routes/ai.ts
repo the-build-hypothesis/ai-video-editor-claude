@@ -105,8 +105,9 @@ export const aiRoutes = new Hono<AppEnv>()
         projectId: IdSchema,
         assetId: IdSchema,
         offsetSec: z.coerce.number().finite().min(0).max(4 * 3600).default(0),
+        keepFillers: z.enum(['0', '1']).default('0'),
       }),
-      { projectId: form.get('projectId') ?? undefined, assetId: form.get('assetId') ?? undefined, offsetSec: form.get('offsetSec') ?? undefined },
+      { projectId: form.get('projectId') ?? undefined, assetId: form.get('assetId') ?? undefined, offsetSec: form.get('offsetSec') ?? undefined, keepFillers: form.get('keepFillers') ?? undefined },
     );
     if (!file || typeof file === 'string') throw new ApiError(400, 'invalid_input', 'file: audio file is required');
     const blob = file as File;
@@ -125,7 +126,7 @@ export const aiRoutes = new Hono<AppEnv>()
     const t0 = Date.now();
     try {
       const ext = mime.includes('wav') ? 'wav' : 'mp3';
-      const r = await transcribe(key, model, blob, `audio.${ext}`, fields.offsetSec, ext === 'wav' ? wavDurationSec(head) : null);
+      const r = await transcribe(key, model, blob, `audio.${ext}`, fields.offsetSec, ext === 'wav' ? wavDurationSec(head) : null, fields.keepFillers === '1');
       const audioSeconds = r.durationSec;
       await finishOp(c.env, opId, { status: 'completed', latencyMs: Date.now() - t0, audioSeconds, costUsd: estimateAudioCost(model, audioSeconds) });
       return c.json({ segments: r.segments, words: r.words, language: r.language, durationSec: r.durationSec, operationId: opId });

@@ -3,7 +3,7 @@ import { mediaCache } from './engine/media-cache';
 import { encodeWavSegment } from './engine/probe';
 import { useEditor } from './store';
 import { findClip, newId, clipEndUs, type CaptionSegment } from '../shared/model';
-import { setCaptions } from '../shared/commands';
+import { setCaptions, updateCaptionSettings } from '../shared/commands';
 import { LIMITS } from '../shared/api-types';
 
 interface Word {
@@ -58,7 +58,9 @@ export function chunkWords(words: Word[], maxChars = 42, maxDur = 3.5): { startS
  * clip's timeline position. Only the clip's used source range is sent (16 kHz mono WAV) to minimise
  * data shared with the provider.
  */
-export async function transcribeClip(clipId: string, opts: { replace: boolean; onStatus?: (s: string) => void }): Promise<number> {
+export const FILLER_RE = /^(u+m+|u+h+m*|e+r+m*|a+h+|h+m+|m+h*m+|uhm|erm)$/i;
+
+export async function transcribeClip(clipId: string, opts: { replace: boolean; onStatus?: (s: string) => void; detectFillers?: boolean }): Promise<number> {
   const st = useEditor.getState();
   const p = st.project!;
   const f = findClip(p, clipId);
@@ -77,9 +79,14 @@ export async function transcribeClip(clipId: string, opts: { replace: boolean; o
   form.append('projectId', p.id);
   form.append('assetId', clip.assetId);
   form.append('offsetSec', '0');
+  if (opts.detectFillers) form.append('keepFillers', '1');
   opts.onStatus?.('Transcribing with OpenAI…');
   const r = await api.transcribe(form);
-  const chunks = r.words?.length ? chunkWords(punctuateWords(r.words, r.segments)) : r.segments;
+  const words = r.words?.length ? punctuateWords(r.words, r.segments) : [];
+  const isFiller = (w: Word) => FILLER_RE.test(w.word.replace(/[^\p{L}]/gu, ''));
+  const fillerWords = opts.detectFillers ? words.filter(isFiller) : [];
+  // Fillers are kept out of caption text; they are offered for removal instead.
+  const chunks = words.length ? chunkWords(opts.detectFillers ? words.filter((w) => !isFiller(w)) : words) : r.segments;
   const toTimeline = (sec: number) => Math.round(clip.timelineStartUs + (sec * 1e6) / clip.speed);
   const end = clipEndUs(clip);
   const segs: CaptionSegment[] = chunks
@@ -94,7 +101,12 @@ export async function transcribeClip(clipId: string, opts: { replace: boolean; o
   const valid = segs.filter((s) => s.endUs > s.startUs);
   const ok = useEditor.getState().edit('Create captions', (pp) => {
     const existing = opts.replace ? [] : pp.captions.segments.filter((s) => s.endUs <= clip.timelineStartUs || s.startUs >= end);
-    return setCaptions(pp, { segments: [...existing, ...valid], sourceAssetId: clip.assetId, language: r.language ?? null });
+    const withCaps = setCaptions(pp, { segments: [...existing, ...valid], sourceAssetId: clip.assetId, language: r.language ?? null });
+    const fillers = fillerWords
+      .map((w) => ({ clipId: clip.id, word: w.word.slice(0, 40), startUs: Math.max(clip.timelineStartUs, toTimeline(w.startSec) - 30_000), endUs: Math.min(end, toTimeline(w.endSec) + 30_000) }))
+      .filter((f) => f.endUs > f.startUs);
+    const keep = withCaps.captions.fillers.filter((f) => f.clipId !== clip.id);
+    return updateCaptionSettings(withCaps, { patch: { fillers: [...keep, ...fillers] } });
   });
   if (!ok) throw new Error('Could not apply captions to the project.');
   return valid.length;

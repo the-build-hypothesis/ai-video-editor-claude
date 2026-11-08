@@ -81,12 +81,16 @@ export function mapTranscription(j: unknown, offsetSec: number, fallbackDuration
   return { text: o.text ?? '', language: o.language ?? null, durationSec: duration, segments: segments.filter((s) => s.text), words };
 }
 
-export async function transcribe(key: string, model: string, file: Blob, filename: string, offsetSec: number, fallbackDurationSec: number | null): Promise<TranscriptionResult> {
+/** Prompt that encourages Whisper to keep disfluencies (it normally drops them). Documented OpenAI technique. */
+export const KEEP_FILLERS_PROMPT = 'Umm, let me think like, hmm... Okay, here is what I am, uh, thinking.';
+
+export async function transcribe(key: string, model: string, file: Blob, filename: string, offsetSec: number, fallbackDurationSec: number | null, keepFillers = false): Promise<TranscriptionResult> {
   const verbose = model === 'whisper-1';
   const j = await callWithRetry(`${BASE}/audio/transcriptions`, key, () => {
     const fd = new FormData();
     fd.append('file', file, filename);
     fd.append('model', model);
+    if (keepFillers) fd.append('prompt', KEEP_FILLERS_PROMPT);
     if (verbose) {
       fd.append('response_format', 'verbose_json');
       fd.append('timestamp_granularities[]', 'segment');

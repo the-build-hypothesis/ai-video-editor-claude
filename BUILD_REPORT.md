@@ -156,8 +156,8 @@ See [FEATURE_MATRIX.md](FEATURE_MATRIX.md).
   - All implemented except AUTH-04 (password reset), which is **blocked** with no email provider.
   - **Verified only by manual inspection, not automated tests:** AUD-03 (no manual gain-point editor), PREV-04 (sync checked by eye) and MEDIA-05 (drag-and-drop gestures).
 - **P2:**
-  - Implemented: PREV-07, FX-07, FX-08, AUD-06, DATA-07, AI-10.
-  - Partial: MEDIA-09 (bulk import, no proxies), TL-11 (no persistent groups), AI-09 (silence removal only, no filler words), EXP-09 (in-browser render, not resumable), DATA-08.
+  - Implemented: PREV-07, FX-07, FX-08, AUD-06, DATA-07, AI-09 (silences and filler words), AI-10.
+  - Partial: MEDIA-09 (bulk import, no proxies), TL-11 (no persistent groups), EXP-09 (in-browser render, not resumable), DATA-08.
   - FX-07 (keyframes) is also implemented: linear keyframes for X, Y, scale, rotation and opacity, with auto-key.
 
 ## 12.5 Verification
@@ -228,7 +228,6 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 - **Deferred:**
   - password reset (needs an email provider);
   - proxy media;
-  - filler-word removal (needs word timings stored in the project);
   - server-side rendering for closed tabs.
 - **Needed for production quality:**
   - Make uploads resumable across page reloads.
@@ -248,4 +247,4 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 - Browser codec and WebCodecs variability for unusual source media.
 - Memory use on long or high-resolution projects, since whole source files are loaded into memory for export.
 
-**Recommended next milestone:** cross-browser QA, keyframe easing, and filler-word cuts from stored word timings.
+**Recommended next milestone:** cross-browser QA, keyframe easing, proxy media for heavy sources, and server-side rendering for closed tabs.
