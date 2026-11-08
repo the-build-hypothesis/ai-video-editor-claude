@@ -9,3 +9,4 @@ cloudflare.env
 test-results/
 playwright-report/
 artifacts/tmp/
+.admin-credentials

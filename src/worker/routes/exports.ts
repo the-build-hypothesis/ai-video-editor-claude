@@ -137,6 +137,7 @@ export const exportRoutes = new Hono<AppEnv>()
     } catch (e) {
       await deleteObjects(c.env, [key]).catch(() => {});
       console.error(JSON.stringify({ level: 'error', msg: 'upload failed', requestId: c.get('requestId'), error: String(e).slice(0, 300) }));
+      if (e instanceof ApiError) throw e; // e.g. 507 storage_full — keep the actionable message
       throw new ApiError(400, 'upload_failed', 'Upload failed or was interrupted; please retry');
     }
     if (result === 'rejected') throw new ApiError(415, 'invalid_media', 'Uploaded file is not an MP4 (missing ftyp box)');

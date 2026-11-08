@@ -410,10 +410,15 @@ test.describe('admin', () => {
   test('non-admin gets 403, admin gets metrics', async () => {
     expect((await json(await A.get('/api/admin/metrics?range=24h'), 403)).error.code).toBe('forbidden');
 
+    // Locally the allowlisted admin is registered on demand. Against a deployment the admin
+    // account already exists (registered by the operator); provide ADMIN_PASSWORD to test it.
+    const isLocal = /localhost|127\.0\.0\.1/.test(BASE);
+    const adminPassword = process.env.ADMIN_PASSWORD ?? (isLocal ? 'admin-password-123' : '');
+    test.skip(!adminPassword, 'ADMIN_PASSWORD not provided for remote admin check');
     const adm = await client();
-    const adminEmail = 'admin@frameforge.test';
-    const reg = await adm.post('/api/auth/register', { data: { email: adminEmail, password: 'admin-password-123' } });
-    if (reg.status() === 409) await json(await adm.post('/api/auth/login', { data: { email: adminEmail, password: 'admin-password-123' } }));
+    const adminEmail = process.env.ADMIN_EMAIL ?? 'admin@frameforge.test';
+    const reg = isLocal ? await adm.post('/api/auth/register', { data: { email: adminEmail, password: adminPassword } }) : null;
+    if (!reg || reg.status() === 409) await json(await adm.post('/api/auth/login', { data: { email: adminEmail, password: adminPassword } }));
     else expect(reg.status()).toBe(200);
     expect((await json(await adm.get('/api/auth/me'))).user.isAdmin).toBe(true);
 

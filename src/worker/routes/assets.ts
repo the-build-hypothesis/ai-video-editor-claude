@@ -138,6 +138,7 @@ export const assetRoutes = new Hono<AppEnv>()
       await deleteObjects(c.env, [key]).catch(() => {});
       await setStatus(c.env, a.id, u.id, 'failed', 'Upload interrupted');
       console.error(JSON.stringify({ level: 'error', msg: 'upload failed', requestId: c.get('requestId'), error: String(e).slice(0, 300) }));
+      if (e instanceof ApiError) throw e; // e.g. 507 storage_full — keep the actionable message
       throw new ApiError(400, 'upload_failed', 'Upload failed or was interrupted; please retry');
     }
     if (result === 'rejected') {
