@@ -18,7 +18,8 @@ export function AuthPage({ bootError }: { bootError?: string | null }) {
     try {
       const r = mode === 'login' ? await api.login(email, password) : await api.register(email, password);
       useEditor.getState().setUser(r.user);
-      navigate('/');
+      // Return to the deep link the user opened (e.g. /project/…), otherwise the dashboard.
+      navigate(location.pathname.startsWith('/project/') || location.pathname === '/admin' ? location.pathname : '/');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -32,7 +33,8 @@ export function AuthPage({ bootError }: { bootError?: string | null }) {
     try {
       const r = await api.guest();
       useEditor.getState().setUser(r.user);
-      navigate('/');
+      // Return to the deep link the user opened (e.g. /project/…), otherwise the dashboard.
+      navigate(location.pathname.startsWith('/project/') || location.pathname === '/admin' ? location.pathname : '/');
     } catch (err) {
       setError((err as Error).message);
     } finally {
