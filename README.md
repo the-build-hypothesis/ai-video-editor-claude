@@ -9,6 +9,14 @@ FrameForge is a browser-based, multitrack video editor:
 - Describe edits in natural language and review the proposed typed operations before applying (undoable).
 - Export a real **H.264/AAC MP4**.
 
+Also included:
+- **Animation and transitions:** keyframe animation (auto-key) for position, scale, rotation and opacity; dissolve, dip-to-black and wipe transitions.
+- **Text:** title, lower-third and subtitle presets with animations.
+- **Audio:** audio ducking under dialogue, silence detection and removal, and a limiter in the mix.
+- **Formats and media:** social-format variants (9:16, 1:1); multipart upload for large files.
+- **Projects:** revision history, autosave with conflict detection, guest mode with upgrade to an account.
+- **Accounts and admin:** self-service account deletion; an admin metrics page.
+
 **Live deployment:** https://ai-video-editor-v1-claude.thebuildhypothesis.com (health: `/api/health`)
 
 Project status, verification evidence and limitations: [BUILD_REPORT.md](BUILD_REPORT.md) · [FEATURE_MATRIX.md](FEATURE_MATRIX.md) · [TEST_RESULTS.md](TEST_RESULTS.md) · API: [docs/API.md](docs/API.md)

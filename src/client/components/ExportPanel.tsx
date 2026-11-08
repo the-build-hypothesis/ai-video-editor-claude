@@ -121,8 +121,8 @@ export function ExportPanel() {
           <label className="field">
             <span className="field-label">Resolution</span>
             <select className="input" value={preset} onChange={(e) => setPreset(e.target.value as keyof typeof PRESETS)} disabled={running} data-testid="export-preset">
-              <option value="1080p">1080p (high quality)</option>
-              <option value="720p">720p (faster, smaller)</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p (faster)</option>
             </select>
           </label>
           <label className="field">
