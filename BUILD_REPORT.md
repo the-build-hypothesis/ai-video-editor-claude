@@ -40,7 +40,7 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
 - **Deployment:** live on R2 since about 20:35.
 - **Tests:** 221 unit, 24 API and 14 browser e2e (real OpenAI calls included).
 - **API cost:** estimated under $0.10 of OpenAI usage.
-- **Commits:** about 45 on `main`.
+- **Commits:** 42 on `main`.
 
 ## 12.2 Architecture
 
