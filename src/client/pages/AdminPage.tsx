@@ -76,6 +76,11 @@ export function AdminPage() {
             <div className="stats">
               <Card label="Media storage" value={formatBytes(m.storage.assetBytes)} sub={`${m.storage.assetCount} files`} />
               <Card label="Export storage" value={formatBytes(m.storage.exportBytes)} />
+              <Card
+                label="Object store"
+                value={m.storage.backend === 'r2' ? 'R2' : 'D1 fallback'}
+                sub={m.storage.capBytes ? `${formatBytes(m.storage.usedBytes)} of ${formatBytes(m.storage.capBytes)} cap used — enable R2 to lift it` : 'no fixed cap'}
+              />
               <Card label="Exports" value={m.exports.inRange} sub={`${m.exports.completed} completed · ${m.exports.failed} failed (range) · ${m.exports.total} all-time`} />
             </div>
             <h2>AI usage</h2>

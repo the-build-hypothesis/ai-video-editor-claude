@@ -144,7 +144,7 @@ export interface AdminMetricsDTO {
   since: string;
   users: { total: number; registered: number; guests: number; newInRange: number };
   projects: { total: number; updatedInRange: number };
-  storage: { assetBytes: number; exportBytes: number; assetCount: number };
+  storage: { assetBytes: number; exportBytes: number; assetCount: number; backend: 'r2' | 'd1'; capBytes: number | null; usedBytes: number | null };
   exports: { total: number; inRange: number; completed: number; failed: number };
   ai: { calls: number; failed: number; costUsd: number; transcribeSeconds: number; inputTokens: number; outputTokens: number; byKind: Record<string, number> };
 }

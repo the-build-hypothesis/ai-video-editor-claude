@@ -54,7 +54,7 @@ export const opsRoutes = new Hono<AppEnv>()
       since: new Date(since).toISOString(),
       users: { total: n(us.total), registered: n(us.registered), guests: n(us.guests), newInRange: n(us.newInRange) },
       projects: { total: n(pr.total), updatedInRange: n(pr.updatedInRange) },
-      storage: { assetBytes: n(as.bytes), exportBytes: n(eb.bytes), assetCount: n(as.n) },
+      storage: { assetBytes: n(as.bytes), exportBytes: n(eb.bytes), assetCount: n(as.n), ...(await storageCapacity(c.env)) },
       exports: { total: n(ex.total), inRange: n(ex.inRange), completed: n(ex.completed), failed: n(ex.failed) },
       ai: {
         calls: n(a.calls),
@@ -68,3 +68,10 @@ export const opsRoutes = new Hono<AppEnv>()
     };
     return c.json(dto);
   });
+
+/** Object-store capacity info for the admin page (D1 fallback has a configured cap). */
+async function storageCapacity(env: AppEnv['Bindings']): Promise<{ backend: 'r2' | 'd1'; capBytes: number | null; usedBytes: number | null }> {
+  if (env.MEDIA) return { backend: 'r2', capBytes: null, usedBytes: null };
+  const r = await env.DB.prepare('SELECT COALESCE(SUM(size), 0) AS b FROM blob_objects').first<{ b: number }>();
+  return { backend: 'd1', capBytes: (Number(env.D1_MAX_DB_MB ?? '450') || 450) * 1024 * 1024, usedBytes: Number(r?.b ?? 0) };
+}
