@@ -4,6 +4,7 @@ import { createMiddleware } from 'hono/factory';
 import { z } from 'zod';
 import type { AppEnv, Ctx, Env, UserRow } from '../env';
 import { ApiError, parseInput } from '../errors';
+import { deletePrefix, keys } from '../storage';
 import { DUMMY_PASSWORD_HASH, hashPassword, randomId, randomToken, sha256Hex, verifyPassword } from '../lib/crypto';
 import { clientIp, rateLimit, toUserDTO } from '../util';
 
@@ -154,5 +155,23 @@ export const authRoutes = new Hono<AppEnv>()
   .post('/logout', async (c) => {
     await dropCurrentSession(c);
     deleteCookie(c, SESSION_COOKIE, { path: '/', secure: !isLocalHttp(c) });
+    return c.json({ ok: true });
+  })
+  /** Self-service deletion of the account and ALL its data (projects, media, exports, AI logs). */
+  .post('/delete-account', async (c) => {
+    const u = c.get('user');
+    if (!u) throw new ApiError(401, 'unauthorized', 'Sign in first');
+    const body = (await c.req.json().catch(() => ({}))) as { password?: string; confirm?: string };
+    if (body.confirm !== 'DELETE') throw new ApiError(400, 'invalid_input', 'Confirmation text must be DELETE');
+    if (!u.is_guest) {
+      await rateLimit(c.env, `login:${clientIp(c)}:${u.email}`, LOGIN_LIMIT.limit, LOGIN_LIMIT.windowMs, 'Too many attempts, please try again later');
+      if (!(await verifyPassword(String(body.password ?? ''), u.password_hash ?? DUMMY_PASSWORD_HASH))) throw new ApiError(401, 'invalid_credentials', 'Password is incorrect');
+    }
+    const objects = await deletePrefix(c.env, keys.userPrefix(u.id));
+    // AI usage rows hold no content (only model/latency/tokens/cost): anonymise so cost totals stay accurate.
+    await c.env.DB.prepare("UPDATE ai_operations SET user_id = 'deleted', project_id = NULL WHERE user_id = ?").bind(u.id).run();
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(u.id).run(); // cascades projects, assets, exports, sessions
+    deleteCookie(c, SESSION_COOKIE, { path: '/', secure: !isLocalHttp(c) });
+    console.log(JSON.stringify({ level: 'info', msg: 'account deleted', requestId: c.get('requestId'), objects }));
     return c.json({ ok: true });
   });

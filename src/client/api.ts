@@ -58,6 +58,7 @@ export const api = {
   register: (email: string, password: string) => request<{ user: UserDTO }>('POST', '/api/auth/register', { email, password }),
   login: (email: string, password: string) => request<{ user: UserDTO }>('POST', '/api/auth/login', { email, password }),
   logout: () => request<{ ok: true }>('POST', '/api/auth/logout', {}),
+  deleteAccount: (password: string) => request<{ ok: true }>('POST', '/api/auth/delete-account', { password, confirm: 'DELETE' }),
 
   listProjects: () => request<{ projects: ProjectSummaryDTO[] }>('GET', '/api/projects'),
   createProject: (name: string, aspect: string, fps: number) => request<{ project: ProjectDTO }>('POST', '/api/projects', { name, aspect, fps }),

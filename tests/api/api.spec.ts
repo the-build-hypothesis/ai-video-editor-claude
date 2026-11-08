@@ -88,6 +88,28 @@ test.describe('ops', () => {
 });
 
 test.describe('auth', () => {
+  test('delete account removes the user and all of their data', async () => {
+    const c = await client();
+    const email = `del-${RUN}@example.test`;
+    await json(await c.post('/api/auth/register', { data: { email, password: 'delete-me-123' } }));
+    const { project } = await json(await c.post('/api/projects', { data: { name: 'Doomed' } }), 201);
+    const png = readFileSync(join('fixtures', 'logo.png'));
+    const { asset } = await json(await c.post('/api/assets', { data: { name: 'l.png', kind: 'image', mimeType: 'image/png', sizeBytes: png.length, metadata: meta({ width: 400, height: 200 }) } }), 201);
+    await json(await c.put(`/api/assets/${asset.id}/content`, { data: png, headers: { 'Content-Type': 'image/png' } }));
+    expect((await c.post('/api/auth/delete-account', { data: { password: 'wrong', confirm: 'DELETE' } })).status()).toBe(401);
+    expect((await c.post('/api/auth/delete-account', { data: { password: 'delete-me-123' } })).status()).toBe(400);
+    await json(await c.post('/api/auth/delete-account', { data: { password: 'delete-me-123', confirm: 'DELETE' } }));
+    expect((await json(await c.get('/api/auth/me'))).user).toBeNull();
+    // Credentials no longer work; data is gone for a new session too.
+    expect((await c.post('/api/auth/login', { data: { email, password: 'delete-me-123' } })).status()).toBe(401);
+    const c2 = await client();
+    await json(await c2.post('/api/auth/register', { data: { email, password: 'delete-me-123' } }));
+    expect((await c2.get(`/api/projects/${project.id}`)).status()).toBe(404);
+    expect((await c2.get(`/api/assets/${asset.id}/content`)).status()).toBe(404);
+    await c.dispose();
+    await c2.dispose();
+  });
+
   test('register two users, me, logout, login', async () => {
     const a = await register(A, emailA.toUpperCase());
     expect(a.user).toMatchObject({ email: emailA, isGuest: false, isAdmin: false });

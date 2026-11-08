@@ -183,6 +183,7 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
   - The planner receives project structure, asset names, text-clip text and up to 20 caption lines, marked as untrusted data.
   - OpenAI's API data-usage policy applies.
   - Guests and their data are purged after 7 days of inactivity. Deleting an asset or export removes its stored bytes.
+  - **Self-service account deletion** (account menu → "Delete account & data"; registered users re-enter their password) removes the user and all projects, media, exports and revisions. AI usage rows are anonymized, not deleted: they hold no content and keep cost totals accurate.
 - **Reliability limits:** rendering depends on the user's tab. Exports stuck in queued or running for over 24 h are marked failed by cron.
 - **Deployment resources:**
   - Worker `ai-video-editor-claude` with custom domain `ai-video-editor-v1-claude.thebuildhypothesis.com`.

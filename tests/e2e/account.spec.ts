@@ -51,5 +51,14 @@ test('registered user saves, signs out, signs in and reopens; another user is de
   const projectId = url.split('/project/')[1];
   const res = await p2.request.get(`/api/projects/${projectId}`);
   expect(res.status()).toBe(404);
+  // The second (guest) user deletes their account and data from the account menu.
+  await p2.goto('/');
+  await p2.getByTestId('account-menu').click();
+  await p2.getByRole('menuitem', { name: 'Delete account & data…' }).click();
+  await expect(p2.getByTestId('delete-account')).toBeDisabled();
+  await p2.getByTestId('delete-confirm').fill('DELETE');
+  await p2.getByTestId('delete-account').click();
+  await expect(p2.getByRole('button', { name: 'Continue as guest' })).toBeVisible();
+  expect((await p2.request.get('/api/auth/me').then((r) => r.json())).user).toBeNull();
   await ctx2.close();
 });
