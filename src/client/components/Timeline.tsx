@@ -8,7 +8,7 @@ import { snapToFrame, formatShort } from '../../shared/time';
 import { addAssetToTimeline, seek, splitAtPlayhead, deleteSelection, duplicateSelection, pause } from '../actions';
 import { assetThumbUrl } from '../api';
 
-const HEADER_W = 168;
+const HEADER_W = 184;
 const TRACK_H: Record<Track['kind'], number> = { video: 58, audio: 50 };
 const CAPTION_H = 30;
 const SNAP_PX = 8;
