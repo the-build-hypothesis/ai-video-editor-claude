@@ -19,7 +19,7 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /** Bodies above this are rejected unless the route streams/handles its own limit. */
 const MAX_JSON_BODY = LIMITS.maxProjectJsonBytes + 256 * 1024;
 const isUploadRoute = (method: string, path: string) =>
-  (method === 'PUT' && /^\/api\/(assets\/[^/]+\/(content|thumbnail)|exports\/[^/]+\/file)$/.test(path)) || (method === 'POST' && path === '/api/ai/transcribe');
+  (method === 'PUT' && /^\/api\/(assets\/[^/]+\/(content|thumbnail|multipart\/\d+)|exports\/[^/]+\/file)$/.test(path)) || (method === 'POST' && path === '/api/ai/transcribe');
 
 const app = new Hono<AppEnv>();
 

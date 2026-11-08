@@ -107,4 +107,53 @@ export class D1BlobStore {
     const objects = rows.slice(0, limit).map((x) => ({ key: x.key }));
     return { objects, truncated, cursor: truncated ? objects[objects.length - 1].key : undefined };
   }
+
+  // ---- multipart (chunks written at fixed offsets so parts can arrive/retry independently)
+  async beginMultipart(key: string) {
+    await this.delete(key);
+    return `d1:${key}`;
+  }
+
+  /** partSize must be a multiple of CHUNK. Returns bytes written. */
+  async putPart(key: string, partNumber: number, partSize: number, body: ReadableStream<Uint8Array>) {
+    const base = ((partNumber - 1) * partSize) / CHUNK;
+    const perPart = partSize / CHUNK;
+    await this.db.prepare('DELETE FROM blob_chunks WHERE key = ? AND idx >= ? AND idx < ?').bind(key, base, base + perPart).run();
+    let idx = base;
+    let size = 0;
+    const reader = body.getReader();
+    let buf = new Uint8Array(CHUNK);
+    let fill = 0;
+    const write = async (bytes: Uint8Array) => {
+      await this.db.prepare('INSERT INTO blob_chunks (key, idx, data) VALUES (?, ?, ?)').bind(key, idx++, bytes).run();
+      size += bytes.byteLength;
+    };
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      let off = 0;
+      while (off < value.byteLength) {
+        const take = Math.min(CHUNK - fill, value.byteLength - off);
+        buf.set(value.subarray(off, off + take), fill);
+        fill += take;
+        off += take;
+        if (fill === CHUNK) {
+          await write(buf);
+          buf = new Uint8Array(CHUNK);
+          fill = 0;
+        }
+      }
+    }
+    if (fill > 0) await write(buf.slice(0, fill));
+    return size;
+  }
+
+  async completeMultipart(key: string, contentType: string, totalSize: number) {
+    const r = await this.db.prepare('SELECT COUNT(*) AS n FROM blob_chunks WHERE key = ?').bind(key).first<{ n: number }>();
+    if ((r?.n ?? 0) !== Math.ceil(totalSize / CHUNK)) throw new Error('multipart upload incomplete');
+    await this.db
+      .prepare('INSERT OR REPLACE INTO blob_objects (key, size, content_type, chunk_size, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(key, totalSize, contentType, CHUNK, Date.now())
+      .run();
+  }
 }

@@ -29,7 +29,7 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
 - **Main limitations:**
   1. **R2 is not enabled** on the Cloudflare account (`code 10042`). Media and exports therefore live in a D1 chunked-blob fallback, capped at 450 MB total by a guard. Enabling R2 and redeploying with `npm run deploy` switches to R2 with no code changes.
   2. Rendering happens in the browser tab; it needs WebCodecs H.264, so recent desktop Chrome/Edge are expected to work. Only Chromium 158 on Linux was verified.
-  3. Per-file uploads are limited to 100 MB (the Workers request-body limit).
+  3. Uploads over 90 MB use multipart (64 MB parts) to stay under the Workers 100 MB request limit. While on D1 storage, total media and export storage is about 450 MB.
   4. No password reset: there is no email provider (AUTH-04 blocked).
 
 ## 12.2 Architecture
@@ -209,10 +209,9 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
   - keyframes;
   - proxy media;
   - filler-word removal (needs word timings stored in the project);
-  - multipart upload over 100 MB;
   - server-side rendering for closed tabs.
 - **Needed for production quality:**
-  - Enable R2 and resumable multipart uploads.
+  - Enable R2 (multipart is already implemented for it, but untested against real R2) and make uploads resumable across page reloads.
   - Email verification and password reset.
   - Real-browser test matrix (Safari, Firefox, Windows/macOS Chrome).
   - Error monitoring and alerting.
@@ -221,7 +220,7 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 
 ## 12.9 Next steps
 
-1. Enable R2 on the account, deploy with R2, and add multipart uploads for files over 100 MB.
+1. Enable R2 on the account, deploy with R2, and verify the R2 multipart path against real R2 (implemented, but only tested with the D1 store).
 2. Cross-browser verification (Safari: canvas `filter` fallback for color effects; Firefox WebCodecs).
 3. Email provider for password reset and verification, so admin access depends on a verified email.
 
@@ -230,4 +229,4 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 - Memory use on long or high-resolution projects, since whole source files are loaded into memory for export.
 - The D1 storage cap until R2 is enabled.
 
-**Recommended next milestone:** R2 plus multipart upload, cross-browser QA, keyframes, and filler-word cuts from stored word timings.
+**Recommended next milestone:** R2 enablement and verification, cross-browser QA, keyframes, and filler-word cuts from stored word timings.

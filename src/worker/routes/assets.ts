@@ -5,7 +5,7 @@ import { ApiError, notFound, parseInput } from '../errors';
 import { randomId } from '../lib/crypto';
 import { SNIFF_BYTES, matchesMime } from '../lib/sniff';
 import { contentLength, iso, requireUser, serveObject } from '../util';
-import { bucket, deleteObjects, keys, putObject, putVerifiedStream } from '../storage';
+import { abortMultipart, beginMultipart, bucket, completeMultipart, deleteObjects, keys, putObject, putVerifiedStream, uploadPart, verifyHead } from '../storage';
 import { ALLOWED_MIME, LIMITS, type AssetDTO, type AssetMetadata } from '../../shared/api-types';
 
 export interface AssetRow {
@@ -21,6 +21,13 @@ export interface AssetRow {
   error: string | null;
   created_at: number;
   updated_at: number;
+  upload_state?: string | null;
+}
+
+interface UploadState {
+  uploadId: string;
+  partSize: number;
+  parts: { partNumber: number; etag: string }[];
 }
 
 const nnInt = z.number().int().min(0).nullable();
@@ -124,7 +131,7 @@ export const assetRoutes = new Hono<AppEnv>()
     const a = await loadOwnedAsset(c.env, parseInput(IdParam, c.req.param('id')), u.id);
     if (a.status === 'ready') throw new ApiError(409, 'already_uploaded', 'Asset content was already uploaded');
     const len = contentLength(c);
-    if (len > LIMITS.maxAssetBytes) throw new ApiError(413, 'too_large', `File exceeds the ${Math.round(LIMITS.maxAssetBytes / 1048576)} MB upload limit`);
+    if (len > LIMITS.singleUploadMaxBytes) throw new ApiError(413, 'use_multipart', `Files over ${Math.round(LIMITS.singleUploadMaxBytes / 1048576)} MB must use multipart upload (POST /api/assets/:id/multipart)`);
     if (len !== a.size_bytes) throw new ApiError(400, 'size_mismatch', `Upload is ${len} bytes but the asset was declared as ${a.size_bytes} bytes`);
     const mime = normMime(c.req.header('content-type'));
     if (ALLOWED_MIME[mime] !== a.kind) throw new ApiError(415, 'unsupported_media_type', `Content-Type ${mime || '(none)'} does not match asset type ${a.mime_type}`);
@@ -147,6 +154,74 @@ export const assetRoutes = new Hono<AppEnv>()
       throw new ApiError(415, 'invalid_media', `The file content is not a valid ${a.mime_type} file (it may be corrupt or mislabeled)`);
     }
     await setStatus(c.env, a.id, u.id, 'ready', null);
+    return c.json({ asset: toAssetDTO(await loadOwnedAsset(c.env, a.id, u.id)) });
+  })
+  .post('/:id/multipart', async (c) => {
+    const u = requireUser(c);
+    const a = await loadOwnedAsset(c.env, parseInput(IdParam, c.req.param('id')), u.id);
+    if (a.status === 'ready') throw new ApiError(409, 'already_uploaded', 'Asset content was already uploaded');
+    const key = keys.assetOriginal(u.id, a.id);
+    const old = a.upload_state ? (JSON.parse(a.upload_state) as UploadState) : null;
+    if (old) await abortMultipart(c.env, key, old.uploadId);
+    const partSize = LIMITS.uploadPartBytes;
+    const uploadId = await beginMultipart(c.env, key, a.mime_type);
+    const state: UploadState = { uploadId, partSize, parts: [] };
+    await c.env.DB.prepare("UPDATE assets SET upload_state = ?, status = 'pending', error = NULL, updated_at = ? WHERE id = ? AND owner_id = ?").bind(JSON.stringify(state), Date.now(), a.id, u.id).run();
+    return c.json({ partSize, partCount: Math.ceil(a.size_bytes / partSize) });
+  })
+  .put('/:id/multipart/:part', async (c) => {
+    const u = requireUser(c);
+    const a = await loadOwnedAsset(c.env, parseInput(IdParam, c.req.param('id')), u.id);
+    if (!a.upload_state || a.status !== 'pending') throw new ApiError(409, 'no_upload', 'Start a multipart upload first');
+    const state = JSON.parse(a.upload_state) as UploadState;
+    const partCount = Math.ceil(a.size_bytes / state.partSize);
+    const n = parseInput(z.coerce.number().int().min(1).max(partCount), c.req.param('part'));
+    const expected = n < partCount ? state.partSize : a.size_bytes - state.partSize * (partCount - 1);
+    const len = contentLength(c);
+    if (len !== expected) throw new ApiError(400, 'size_mismatch', `Part ${n} must be ${expected} bytes (got ${len})`);
+    const raw = c.req.raw.body;
+    if (!raw) throw new ApiError(400, 'invalid_input', 'Empty body');
+    let body: ReadableStream<Uint8Array> = raw as ReadableStream<Uint8Array>;
+    const key = keys.assetOriginal(u.id, a.id);
+    if (n === 1) {
+      const replay = await verifyHead(body, SNIFF_BYTES, (head) => matchesMime(head, a.mime_type));
+      if (replay === 'rejected') {
+        await abortMultipart(c.env, key, state.uploadId);
+        await c.env.DB.prepare("UPDATE assets SET status = 'failed', error = ?, upload_state = NULL, updated_at = ? WHERE id = ? AND owner_id = ?").bind('File content does not match its type', Date.now(), a.id, u.id).run();
+        throw new ApiError(415, 'invalid_media', `The file content is not a valid ${a.mime_type} file (it may be corrupt or mislabeled)`);
+      }
+      body = replay;
+    }
+    let part: { partNumber: number; etag: string };
+    try {
+      part = await uploadPart(c.env, key, state.uploadId, n, state.partSize, body, len);
+    } catch (e) {
+      console.error(JSON.stringify({ level: 'error', msg: 'part upload failed', requestId: c.get('requestId'), part: n, error: String(e).slice(0, 300) }));
+      if (e instanceof ApiError) throw e;
+      throw new ApiError(400, 'upload_failed', `Upload of part ${n} failed or was interrupted; please retry`);
+    }
+    // Re-read state (parts may be retried) and record this part.
+    const fresh = await loadOwnedAsset(c.env, a.id, u.id);
+    const st = JSON.parse(fresh.upload_state ?? JSON.stringify(state)) as UploadState;
+    st.parts = [...st.parts.filter((p) => p.partNumber !== n), part].sort((x, y) => x.partNumber - y.partNumber);
+    await c.env.DB.prepare('UPDATE assets SET upload_state = ?, updated_at = ? WHERE id = ? AND owner_id = ?').bind(JSON.stringify(st), Date.now(), a.id, u.id).run();
+    return c.json({ partNumber: n });
+  })
+  .post('/:id/multipart/complete', async (c) => {
+    const u = requireUser(c);
+    const a = await loadOwnedAsset(c.env, parseInput(IdParam, c.req.param('id')), u.id);
+    if (!a.upload_state) throw new ApiError(409, 'no_upload', 'No multipart upload in progress');
+    const st = JSON.parse(a.upload_state) as UploadState;
+    const partCount = Math.ceil(a.size_bytes / st.partSize);
+    if (st.parts.length !== partCount) throw new ApiError(409, 'incomplete', `Uploaded ${st.parts.length} of ${partCount} parts`);
+    const key = keys.assetOriginal(u.id, a.id);
+    try {
+      await completeMultipart(c.env, key, st.uploadId, st.parts, a.mime_type, a.size_bytes);
+    } catch (e) {
+      console.error(JSON.stringify({ level: 'error', msg: 'multipart complete failed', requestId: c.get('requestId'), error: String(e).slice(0, 300) }));
+      throw new ApiError(400, 'upload_failed', 'Could not finalize the upload; please retry');
+    }
+    await c.env.DB.prepare("UPDATE assets SET status = 'ready', error = NULL, upload_state = NULL, updated_at = ? WHERE id = ? AND owner_id = ?").bind(Date.now(), a.id, u.id).run();
     return c.json({ asset: toAssetDTO(await loadOwnedAsset(c.env, a.id, u.id)) });
   })
   .get('/:id/content', async (c) => {
@@ -193,6 +268,7 @@ export const assetRoutes = new Hono<AppEnv>()
   .delete('/:id', async (c) => {
     const u = requireUser(c);
     const a = await loadOwnedAsset(c.env, parseInput(IdParam, c.req.param('id')), u.id);
+    if (a.upload_state) await abortMultipart(c.env, keys.assetOriginal(u.id, a.id), (JSON.parse(a.upload_state) as UploadState).uploadId).catch(() => {});
     await deleteObjects(c.env, [keys.assetOriginal(u.id, a.id), keys.assetThumb(u.id, a.id)]);
     await c.env.DB.prepare('DELETE FROM assets WHERE id = ? AND owner_id = ?').bind(a.id, u.id).run();
     return c.json({ ok: true });

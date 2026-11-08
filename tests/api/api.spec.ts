@@ -226,6 +226,42 @@ test.describe('projects', () => {
 });
 
 test.describe('assets', () => {
+  test('multipart upload of a >90 MB file: parts, magic check, completion, byte-exact ranges', async () => {
+    test.setTimeout(240_000);
+    const c = await client();
+    await json(await c.post('/api/auth/guest', { data: {} }));
+    const size = 130 * 1024 * 1024 + 12345;
+    const buf = Buffer.alloc(size);
+    // Minimal ftyp header so the magic-byte check passes; deterministic pattern elsewhere.
+    Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]).copy(buf, 0);
+    for (let i = 16; i < size; i += 4096) buf.writeUInt32BE(i >>> 0, i);
+    const { asset } = await json(await c.post('/api/assets', { data: { name: 'big.mp4', kind: 'video', mimeType: 'video/mp4', sizeBytes: size, metadata: meta({ durationUs: 1_000_000, width: 16, height: 16 }) } }), 201);
+    // Single PUT is refused above the single-request limit.
+    const begin = await json(await c.post(`/api/assets/${asset.id}/multipart`, { data: {} }));
+    expect(begin.partCount).toBe(3);
+    // Completing early is refused.
+    expect((await c.post(`/api/assets/${asset.id}/multipart/complete`, { data: {} })).status()).toBe(409);
+    for (let n = 1; n <= begin.partCount; n++) {
+      const part = buf.subarray((n - 1) * begin.partSize, Math.min(size, n * begin.partSize));
+      await json(await c.put(`/api/assets/${asset.id}/multipart/${n}`, { data: part, headers: { 'Content-Type': 'video/mp4' } }));
+    }
+    const done = await json(await c.post(`/api/assets/${asset.id}/multipart/complete`, { data: {} }));
+    expect(done.asset.status).toBe('ready');
+    for (const [start, len] of [[0, 64], [begin.partSize - 10, 20], [2 * begin.partSize + 5, 4096], [size - 100, 100]]) {
+      const r = await c.get(`/api/assets/${asset.id}/content`, { headers: { Range: `bytes=${start}-${start + len - 1}` } });
+      expect(r.status()).toBe(206);
+      expect(Buffer.compare(Buffer.from(await r.body()), buf.subarray(start, start + len))).toBe(0);
+    }
+    // Wrong magic in part 1 → rejected.
+    const { asset: bad } = await json(await c.post('/api/assets', { data: { name: 'bad.mp4', kind: 'video', mimeType: 'video/mp4', sizeBytes: size, metadata: meta() } }), 201);
+    await json(await c.post(`/api/assets/${bad.id}/multipart`, { data: {} }));
+    const junk = Buffer.alloc(begin.partSize, 7);
+    expect((await c.put(`/api/assets/${bad.id}/multipart/1`, { data: junk, headers: { 'Content-Type': 'video/mp4' } })).status()).toBe(415);
+    await c.delete(`/api/assets/${asset.id}`);
+    await c.delete(`/api/assets/${bad.id}`);
+    await c.dispose();
+  });
+
   test('create + upload PNG and MP3, list, range requests, thumbnail, patch', async () => {
     const png = await uploadAsset(A, 'logo.png', 'image', 'image/png', meta({ width: 64, height: 64 }));
     const pngAsset = await json(png.up);
@@ -292,7 +328,7 @@ test.describe('assets', () => {
       'unsupported_media_type',
     );
     expect((await A.post('/api/assets', { data: { name: 'x.png', kind: 'video', mimeType: 'image/png', sizeBytes: 10, metadata: meta() } })).status()).toBe(400);
-    expect((await json(await A.post('/api/assets', { data: { name: 'big.mp4', kind: 'video', mimeType: 'video/mp4', sizeBytes: 101 * 1024 * 1024, metadata: meta() } }), 413)).error.code).toBe('too_large');
+    expect((await json(await A.post('/api/assets', { data: { name: 'big.mp4', kind: 'video', mimeType: 'video/mp4', sizeBytes: 1025 * 1024 * 1024, metadata: meta() } }), 413)).error.code).toBe('too_large');
     expect((await A.post('/api/assets', { data: { name: 'long.mp4', kind: 'video', mimeType: 'video/mp4', sizeBytes: 10, metadata: meta({ durationUs: 21 * 60 * 1e6 }) } })).status()).toBe(400);
 
     // Size mismatch between declared and uploaded bytes.

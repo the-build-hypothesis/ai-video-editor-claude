@@ -39,11 +39,11 @@ The "Evidence" column names the automated test or manual check behind each statu
 | MEDIA-04 | P0 | implemented | Client probe decodes before upload; server checks magic bytes and size. E: `corrupt.mp4` rejected with a message. A: corrupt MP4, wrong type and oversize. |
 | MEDIA-05 | P1 | implemented | Drag and drop of files into the library; drag from library to timeline position and track. Manual check only (not covered by e2e). |
 | MEDIA-06 | P1 | implemented | JPEG thumbnails generated client-side and stored privately; waveform peaks (1000) stored in asset metadata and drawn on clips. Screenshots. |
-| MEDIA-07 | P1 | implemented | XHR upload progress bar, Cancel (aborts and deletes the pending asset record), Retry after failure. |
+| MEDIA-07 | P1 | implemented | XHR upload progress bar, Cancel (aborts and deletes the pending asset record), Retry after failure. **Large files over 90 MB use multipart upload:** 64 MB parts, each retried up to 3×, magic bytes checked on the first part. A: 130 MB multipart test with byte-exact Range checks. Manual: a 151 MB MP4 uploaded through the UI in 11.5 s (local). |
 | MEDIA-08 | P1 | implemented | User-level library; clips reference `assetId`; reused across clips and projects without re-upload. |
 | MEDIA-09 | P2 | partial | Bulk multi-file import works (sequential queue). No proxy media. |
 
-Limits: 100 MB and 20 minutes per file; 2 GB per user (500 MB per guest). Enforced on the server and shown in the UI.
+Limits: 1 GB and 20 minutes per file (multipart above 90 MB); 2 GB per user (500 MB per guest); the D1-fallback deployment also caps total storage at about 450 MB. Enforced on the server and shown in the UI.
 
 ## 4.4 Timeline
 

@@ -103,7 +103,7 @@ FF_STORAGE=d1 npm run build && npx wrangler deploy
 
 ## Limits and supported browsers
 
-- **Per file:** up to 100 MB (the Workers request-body limit) and 20 minutes.
+- **Per file:** up to 1 GB and 20 minutes. Files over 90 MB upload as 64 MB parts (R2 multipart, or chunk-offset writes in the D1 fallback), which stays under the Workers 100 MB request-body limit. In the current D1-storage deployment, total storage is capped at about 450 MB.
 - **Storage per account:** 2 GB for registered users, 500 MB for guests. Guests are kept for 7 days of inactivity.
 - **Rate limits:** 60 AI calls/hour/user and 30 exports/hour/user. Login and registration are also rate-limited by IP.
 - **Export:** stored exports are capped at 100 MB. Larger renders can still be downloaded locally.

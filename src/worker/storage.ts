@@ -85,16 +85,11 @@ export async function storageHealthy(env: Env): Promise<boolean> {
  * written. Memory use is bounded to the first chunk(s); the stream is re-wrapped in a
  * FixedLengthStream so R2 receives a known length. Returns 'rejected' if `check` fails.
  */
-export async function putVerifiedStream(
-  env: Env,
-  key: string,
-  body: ReadableStream<Uint8Array>,
-  length: number,
-  contentType: string,
-  headBytes: number,
-  check: (head: Uint8Array) => boolean,
-): Promise<'ok' | 'rejected'> {
-  await ensureCapacity(env, length);
+/**
+ * Reads the first `headBytes` of a stream and runs `check`; returns a replay stream (head + rest)
+ * with bounded memory, or 'rejected'.
+ */
+export async function verifyHead(body: ReadableStream<Uint8Array>, headBytes: number, check: (head: Uint8Array) => boolean): Promise<ReadableStream<Uint8Array> | 'rejected'> {
   const reader = body.getReader();
   const buffered: Uint8Array[] = [];
   let have = 0;
@@ -115,10 +110,19 @@ export async function putVerifiedStream(
     off += take.byteLength;
   }
   if (!check(head)) {
-    await reader.cancel().catch(() => {});
+    // Drain the remaining body (no buffering) so the client receives a clean 415 response instead
+    // of a connection reset mid-upload.
+    try {
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } catch {
+      /* client went away */
+    }
     return 'rejected';
   }
-  const replay = new ReadableStream<Uint8Array>({
+  return new ReadableStream<Uint8Array>({
     pull: async (ctrl) => {
       const next = buffered.shift();
       if (next) return ctrl.enqueue(next);
@@ -128,8 +132,59 @@ export async function putVerifiedStream(
     },
     cancel: (r) => reader.cancel(r),
   });
+}
+
+/**
+ * Streams `body` into storage while verifying the first bytes with `check` before anything is
+ * written. The stream is re-wrapped in a FixedLengthStream so R2 receives a known length.
+ */
+export async function putVerifiedStream(
+  env: Env,
+  key: string,
+  body: ReadableStream<Uint8Array>,
+  length: number,
+  contentType: string,
+  headBytes: number,
+  check: (head: Uint8Array) => boolean,
+): Promise<'ok' | 'rejected'> {
+  await ensureCapacity(env, length);
+  const replay = await verifyHead(body, headBytes, check);
+  if (replay === 'rejected') return 'rejected';
   const fixed = new FixedLengthStream(length);
   const pump = replay.pipeTo(fixed.writable);
   await Promise.all([putObject(env, key, fixed.readable, contentType), pump]);
   return 'ok';
+}
+
+// ------------------------------------------------------------------ multipart (large uploads)
+
+export async function beginMultipart(env: Env, key: string, contentType: string): Promise<string> {
+  if (env.MEDIA) return (await env.MEDIA.createMultipartUpload(key, { httpMetadata: { contentType } })).uploadId;
+  return new D1BlobStore(env.DB).beginMultipart(key);
+}
+
+export async function uploadPart(env: Env, key: string, uploadId: string, partNumber: number, partSize: number, body: ReadableStream<Uint8Array>, length: number): Promise<{ partNumber: number; etag: string }> {
+  await ensureCapacity(env, length);
+  const fixed = new FixedLengthStream(length);
+  const pump = body.pipeTo(fixed.writable);
+  if (env.MEDIA) {
+    const mp = env.MEDIA.resumeMultipartUpload(key, uploadId);
+    const [part] = await Promise.all([mp.uploadPart(partNumber, fixed.readable), pump]);
+    return { partNumber: part.partNumber, etag: part.etag };
+  }
+  await Promise.all([new D1BlobStore(env.DB).putPart(key, partNumber, partSize, fixed.readable as ReadableStream<Uint8Array>), pump]);
+  return { partNumber, etag: `d1-${partNumber}` };
+}
+
+export async function completeMultipart(env: Env, key: string, uploadId: string, parts: { partNumber: number; etag: string }[], contentType: string, totalSize: number): Promise<void> {
+  if (env.MEDIA) {
+    await env.MEDIA.resumeMultipartUpload(key, uploadId).complete(parts);
+    return;
+  }
+  await new D1BlobStore(env.DB).completeMultipart(key, contentType, totalSize);
+}
+
+export async function abortMultipart(env: Env, key: string, uploadId: string): Promise<void> {
+  if (env.MEDIA) await env.MEDIA.resumeMultipartUpload(key, uploadId).abort().catch(() => {});
+  else await new D1BlobStore(env.DB).delete(key);
 }

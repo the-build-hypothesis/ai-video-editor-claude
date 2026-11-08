@@ -25,7 +25,10 @@
  * ASSETS (user library, reusable across that user's projects)
  *  GET    /api/assets                          -> { assets: AssetDTO[], usage: {bytes, limitBytes} }
  *  POST   /api/assets {name, kind, mimeType, sizeBytes, metadata} -> { asset }  (status 'pending'; quota checked)
- *  PUT    /api/assets/:id/content  (raw body = file bytes, Content-Type = mimeType) -> { asset } (status 'ready')
+ *  PUT    /api/assets/:id/content  (raw body = file bytes, Content-Type = mimeType) -> { asset } (status 'ready'); ≤ 90 MB
+ *  POST   /api/assets/:id/multipart              -> { partSize, partCount }   (files > 90 MB)
+ *  PUT    /api/assets/:id/multipart/:partNumber  (raw body, 1-based, exact part size) -> { partNumber }
+ *  POST   /api/assets/:id/multipart/complete     -> { asset } (status 'ready')
  *         Server checks size limit and magic bytes for the declared kind.
  *  GET    /api/assets/:id/content  (supports Range) -> bytes
  *  PUT    /api/assets/:id/thumbnail (image/jpeg|png|webp ≤ 512KB) -> { ok }
@@ -147,7 +150,11 @@ export interface AdminMetricsDTO {
 }
 
 export const LIMITS = {
-  maxAssetBytes: 100 * 1024 * 1024, // Workers request-body limit on standard plans
+  /** Max media file size. Files above singleUploadMaxBytes use multipart upload (64 MB parts). */
+  maxAssetBytes: 1024 * 1024 * 1024,
+  /** Workers request-body limit is 100 MB on standard plans; single-request uploads stay below it. */
+  singleUploadMaxBytes: 90 * 1024 * 1024,
+  uploadPartBytes: 64 * 1024 * 1024,
   maxThumbnailBytes: 512 * 1024,
   maxExportBytes: 100 * 1024 * 1024,
   maxTranscribeBytes: 24 * 1024 * 1024,
