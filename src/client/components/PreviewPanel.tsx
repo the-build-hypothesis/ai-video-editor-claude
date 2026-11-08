@@ -26,6 +26,7 @@ export function PreviewPanel() {
   useEffect(() => {
     const engine = new PreviewEngine(canvasRef.current!, hostRef.current!);
     player.engine = engine;
+    (globalThis as { __ffEngine?: unknown }).__ffEngine = engine;
     let last = 0;
     engine.onTime = (t) => {
       const now = performance.now();

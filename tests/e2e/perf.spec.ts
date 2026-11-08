@@ -18,7 +18,10 @@ test('preview plays a 10-clip, 3-track project at interactive frame rates', asyn
   await page.keyboard.press('Escape');
   await page.keyboard.press('Home');
   const t0 = Date.now();
-  await page.evaluate(() => ((globalThis as { __ffPreviewStats?: unknown }).__ffPreviewStats = { frames: 0, drawMs: 0 }));
+  await page.evaluate(() => {
+    (globalThis as { __ffPreviewStats?: unknown }).__ffPreviewStats = { frames: 0, drawMs: 0 };
+    (globalThis as { __ffSyncStats?: unknown }).__ffSyncStats = { samples: 0, sumMs: 0, maxMs: 0, signedMs: 0 };
+  });
   await page.getByTestId('play').click();
   await page.waitForTimeout(5000);
   await page.getByTestId('play').click();
@@ -27,6 +30,11 @@ test('preview plays a 10-clip, 3-track project at interactive frame rates', asyn
   const fps = stats.frames / 5;
   console.log(`[perf] preview ${fps.toFixed(1)} fps, avg draw ${(stats.drawMs / Math.max(1, stats.frames)).toFixed(2)} ms over ${secs.toFixed(1)}s`);
   expect(fps).toBeGreaterThan(20);
+  const sync = await page.evaluate(() => (globalThis as { __ffSyncStats?: { samples: number; sumMs: number; maxMs: number; signedMs: number } }).__ffSyncStats!);
+  const avg = sync.sumMs / Math.max(1, sync.samples);
+  console.log(`[perf] A/V sync: ${sync.samples} samples, avg |drift| ${avg.toFixed(1)} ms (signed ${(sync.signedMs / Math.max(1, sync.samples)).toFixed(1)} ms, + = video ahead), max ${sync.maxMs.toFixed(1)} ms`);
+  expect(sync.samples).toBeGreaterThan(50);
+  expect(avg).toBeLessThan(80);
   // Scrubbing: 20 seeks across the timeline settle quickly.
   const s0 = Date.now();
   for (let i = 0; i < 20; i++) await page.getByTestId('ruler').click({ position: { x: 20 + i * 30, y: 10 } });

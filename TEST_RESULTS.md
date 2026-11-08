@@ -74,6 +74,8 @@ The source timecodes burned into the test pattern confirm the trim and split sou
 ## Measured performance (Chromium headless, this machine)
 
 - **1080p export of the 30 s §8.2 timeline:** 8–10 s render + encode locally (≈3× realtime). On production, export plus upload took 64–78 s, dominated by downloading the source media and uploading the 30 MB MP4 through D1-chunk storage.
+- **Preview playback** (`perf.spec.ts`, 10 clips on 3 tracks): **60 fps**, about 2.1 ms per composited frame; 20 scrub seeks in under 0.7 s.
+- **A/V sync:** the preview clock follows the *heard* audio (AudioContext time minus output latency). Video elements trail it by about 47 ms on average (max about 80 ms) in this headless, software-decoding Chromium, even with rate-based correction (±6%) and re-seeks above 120 ms. Real hardware decoding is expected to do better, but that wasn't measured here.
 - **Initial editor load (local):** under 1 s to an interactive editor. On production the editor loads in about 2–3 s. Video frames for the first preview take about 2 s when the source MP4 keeps its index at the end of the file; the preview shows "Loading media…" meanwhile.
 - **Transcription (whisper-1):** ≈5–10 s for 12.7 s of speech. **Plan (gpt-4o-mini):** ≈2–6 s.
 

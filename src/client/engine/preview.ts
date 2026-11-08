@@ -104,7 +104,12 @@ export class PreviewEngine {
   }
 
   currentTime(): number {
-    if (this.playing && this.audioCtx) return this.playStartUs + (this.audioCtx.currentTime - this.ctxStart) * 1e6;
+    if (this.playing && this.audioCtx) {
+      // Picture follows the audio actually being heard: subtract the output pipeline latency.
+      const ac = this.audioCtx;
+      const latency = (ac.outputLatency || 0) + (ac.baseLatency || 0);
+      return this.playStartUs + Math.max(0, ac.currentTime - latency - this.ctxStart) * 1e6;
+    }
     return this.timeUs;
   }
 
@@ -268,9 +273,24 @@ export class PreviewEngine {
       const target = Math.min(Math.max(0, l.sourceUs / 1e6), Math.max(0, durSec - 0.04));
       const inRange = t >= l.clip.timelineStartUs && t < clipEndUs(l.clip);
       if (this.playing && inRange) {
-        if (slot.el.playbackRate !== l.clip.speed) slot.el.playbackRate = l.clip.speed;
+        // Sync stats (PREV-04): |video element time − clock-derived source time| in ms.
+        if (!slot.seeking && slot.el.readyState >= 2 && !slot.el.paused) {
+          const st = ((globalThis as { __ffSyncStats?: { samples: number; sumMs: number; maxMs: number; signedMs: number } }).__ffSyncStats ??= { samples: 0, sumMs: 0, maxMs: 0, signedMs: 0 });
+          const signed = (slot.el.currentTime - target) * 1000; // + = video ahead of clock
+          const d = Math.abs(signed);
+          st.samples++;
+          st.sumMs += d;
+          st.signedMs = (st.signedMs ?? 0) + signed;
+          st.maxMs = Math.max(st.maxMs, d);
+        }
+        // Rate-based fine sync: nudge playbackRate ±6% while 25–120 ms off (large errors re-seek).
+        const diff = slot.el.currentTime - target;
+        const rate = diff < -0.025 ? l.clip.speed * 1.06 : diff > 0.025 ? l.clip.speed * 0.94 : l.clip.speed;
+        if (Math.abs(slot.el.playbackRate - rate) > 1e-6) slot.el.playbackRate = rate;
         if (Math.abs(slot.el.currentTime - target) > 0.12 && !slot.seeking) this.seekSlot(slot, target);
-        if (slot.el.paused && !slot.seeking) void slot.el.play().catch(() => {});
+        // Hold video until the scheduled audio start so picture and sound begin together.
+        const audioStarted = !this.audioCtx || this.audioCtx.currentTime - (this.audioCtx.outputLatency || 0) - (this.audioCtx.baseLatency || 0) >= this.ctxStart;
+        if (slot.el.paused && !slot.seeking && audioStarted) void slot.el.play().catch(() => {});
       } else {
         if (!slot.el.paused) slot.el.pause();
         if (Math.abs(slot.el.currentTime - target) > 0.5 / p.settings.fps) this.seekSlot(slot, target);
