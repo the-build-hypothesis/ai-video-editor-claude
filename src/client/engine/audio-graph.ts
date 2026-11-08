@@ -52,31 +52,37 @@ export function scheduleSegments(
     const offsetUs = Math.max(0, fromUs - seg.timelineStartUs); // timeline offset into clip
     const playUs = Math.min(segEnd, toUs) - Math.max(seg.timelineStartUs, fromUs);
     if (playUs <= 0) continue;
-    const srcOffsetSec = (seg.sourceStartUs + offsetUs * seg.speed) / 1e6;
+    let when = ctxStart + Math.max(0, seg.timelineStartUs - fromUs) / 1e6;
+    // If scheduling runs late (main-thread stall), skip ahead so the segment stays in sync.
+    const lateUs = Math.max(0, (ctx.currentTime - when) * 1e6);
+    if (lateUs >= playUs) continue;
+    when += lateUs / 1e6;
+    const startOffsetUs = offsetUs + lateUs;
+    const playLeftUs = playUs - lateUs;
+    const srcOffsetSec = (seg.sourceStartUs + startOffsetUs * seg.speed) / 1e6;
     if (srcOffsetSec >= buf.duration) continue;
-    const when = ctxStart + Math.max(0, seg.timelineStartUs - fromUs) / 1e6;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = seg.speed;
     const g = ctx.createGain();
     // Gain envelope sampled at 100 Hz from the shared gain function (fades + automation).
-    const startTl = Math.max(seg.timelineStartUs, fromUs);
-    const durSec = playUs / 1e6;
+    const startTl = Math.max(seg.timelineStartUs, fromUs) + lateUs;
+    const durSec = playLeftUs / 1e6;
     const n = Math.max(2, Math.min(20000, Math.ceil(durSec * 100) + 1));
     const curve = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-      const tl = startTl + (playUs * i) / (n - 1);
+      const tl = startTl + (playLeftUs * i) / (n - 1);
       curve[i] = segmentGainAt(seg, Math.min(tl, segEnd - 1));
     }
     try {
-      g.gain.setValueCurveAtTime(curve, Math.max(when, ctx.currentTime), durSec);
+      g.gain.setValueCurveAtTime(curve, when, durSec);
     } catch {
       g.gain.value = seg.gain;
     }
     src.connect(g);
     g.connect(output);
     // duration argument is in *buffer* seconds (affected by playbackRate).
-    src.start(Math.max(when, ctx.currentTime), srcOffsetSec, durSec * seg.speed);
+    src.start(when, srcOffsetSec, durSec * seg.speed);
     sources.push(src);
   }
   return {

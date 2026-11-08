@@ -80,7 +80,10 @@ class FrameReader {
   }
 
   async at(t: number): Promise<VideoSample | null> {
-    if (!this.it || t < this.lastT - 1e-6 || (this.cur && t - this.cur.timestamp > 2.5)) await this.restart(t);
+    // Restart on backwards seeks or big forward jumps — but not when the source is exhausted
+    // (holding the last frame past the end of the media must not re-decode every frame).
+    const exhausted = this.done && !this.nxt;
+    if (!this.it || t < this.lastT - 1e-6 || (this.cur && !exhausted && t - this.cur.timestamp > 2.5)) await this.restart(t);
     this.lastT = t;
     while (this.nxt && this.nxt.timestamp <= t + 1e-4) {
       this.cur?.close();
@@ -154,6 +157,11 @@ export async function exportMp4(
     }
   }
   const inputs: Input[] = [];
+  let output: Output | null = null;
+  let finished = false;
+  // Free each clip's decoder once the clip (plus the longest possible transition tail) is over.
+  const releaseAfterUs = new Map<string, number>();
+  for (const clips of usedVideo.values()) for (const c of clips) releaseAfterUs.set(c.id, c.timelineStartUs + c.durationUs + 2_600_000);
   const readers = new Map<string, FrameReader>(); // by clip id
   try {
     for (const [assetId, clips] of usedVideo) {
@@ -176,7 +184,7 @@ export async function exportMp4(
     // --- Output
     const audioEncoder = await ensureAac();
     const target = new BufferTarget();
-    const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target });
+    output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target });
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d', { alpha: false })!;
     const videoSource = new CanvasSource(canvas, {
@@ -235,6 +243,13 @@ export async function exportMp4(
     for (let n = 0; n < frames; n++) {
       check();
       const t = frameToUs(n, fps);
+      for (const [id, until] of releaseAfterUs) {
+        if (t > until) {
+          await readers.get(id)?.close();
+          readers.delete(id);
+          releaseAfterUs.delete(id);
+        }
+      }
       const layers = evaluateVisualLayers(project, t);
       frameSources.clear();
       for (const l of layers) {
@@ -251,11 +266,14 @@ export async function exportMp4(
     videoSource.close();
     onProgress({ phase: 'finalizing', progress: 0.99 });
     await output.finalize();
+    finished = true;
     const blob = new Blob([target.buffer!], { type: 'video/mp4' });
     onProgress({ phase: 'finalizing', progress: 1 });
     return { blob, width, height, durationUs: frameToUs(frames, fps), frames, audioEncoder };
   } finally {
     for (const r of readers.values()) await r.close();
     for (const i of inputs) i.dispose?.();
+    // Release encoders promptly on failure/cancel.
+    if (output && !finished) await output.cancel().catch(() => {});
   }
 }

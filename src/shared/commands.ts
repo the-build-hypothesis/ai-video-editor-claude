@@ -206,6 +206,14 @@ export function trimClip(
   if (clip.kind !== 'text') {
     clip.sourceStartUs = Math.max(0, Math.round(clip.sourceStartUs + (newStart - oldStart) * speed));
   }
+  if ('gainPoints' in clip && clip.gainPoints.length && newStart !== oldStart) {
+    // Gain points are clip-relative: keep them at the same timeline positions.
+    const shift = newStart - oldStart;
+    const pts = clip.gainPoints;
+    const moved = pts.map((g) => ({ ...g, tUs: g.tUs - shift })).filter((g) => g.tUs >= 0);
+    if (shift > 0 && !moved.some((g) => g.tUs === 0)) moved.unshift({ tUs: 0, gain: interpGain(pts, shift) });
+    clip.gainPoints = moved.slice(0, 64);
+  }
   if ('keyframes' in clip && clip.keyframes.length && newStart !== oldStart) {
     // Keyframes are clip-relative: keep them at the same timeline positions.
     const shift = newStart - oldStart;
@@ -475,6 +483,15 @@ export function removeRangesFromClip(p0: Project, args: { clipId: string; ranges
   const clipEnd = clipEndUs(f0.clip);
   const ranges = args.ranges
     .map((r) => ({ startUs: Math.max(clipStart, Math.round(r.startUs)), endUs: Math.min(clipEnd, Math.round(r.endUs)) }))
+    .filter((r) => r.endUs > r.startUs)
+    .sort((a, b) => a.startUs - b.startUs)
+    // merge overlapping/touching ranges
+    .reduce<{ startUs: number; endUs: number }[]>((acc, r) => {
+      const last = acc[acc.length - 1];
+      if (last && r.startUs <= last.endUs) last.endUs = Math.max(last.endUs, r.endUs);
+      else acc.push({ ...r });
+      return acc;
+    }, [])
     .filter((r) => r.endUs - r.startUs >= MIN_DURATION_US)
     .sort((a, b) => b.startUs - a.startUs); // process from the end so earlier positions stay valid
   if (ranges.length === 0) return p0;
@@ -527,8 +544,9 @@ export function reframeForAspect(p0: Project, args: { aspect: AspectPreset; name
   if (args.name) p.name = args.name.slice(0, 120);
   for (const t of p.tracks) {
     for (const c of t.clips) {
+      if (c.kind !== 'audio' && c.keyframes.length) c.keyframes = c.keyframes.map((k) => ({ ...k, x: Math.round(k.x * sx), y: Math.round(k.y * sy) }));
       if (c.kind === 'video' || c.kind === 'image') {
-        const fullFrame = c.transform.scale === 1 && c.transform.x === 0 && c.transform.y === 0;
+        const fullFrame = c.keyframes.length === 0 && c.transform.scale === 1 && c.transform.x === 0 && c.transform.y === 0;
         if (fullFrame) c.transform = { ...c.transform, fit: 'cover' };
         else c.transform = { ...c.transform, x: Math.round(c.transform.x * sx), y: Math.round(c.transform.y * sy) };
       } else if (c.kind === 'text') {

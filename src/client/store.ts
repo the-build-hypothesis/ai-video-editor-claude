@@ -204,10 +204,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     saving = (async () => {
       try {
         const r = await api.saveProject(snapshot.id, snapshot, get().projectVersion);
+        // The editor may have switched projects while this save was in flight: ignore stale responses.
+        if (get().project?.id !== snapshot.id) return;
         const stillSame = get().project === snapshot;
         set({ projectVersion: r.project.version, saveState: stillSame ? 'saved' : 'dirty', saveError: null, lastSavedAt: Date.now() });
         if (!stillSame) scheduleSave();
       } catch (e) {
+        if (get().project?.id !== snapshot.id) return;
         if (e instanceof ApiError && e.status === 409) {
           set({ saveState: 'conflict', saveError: 'This project was changed in another tab or device.' });
         } else if (e instanceof ApiError && e.status === 0) {

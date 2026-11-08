@@ -121,6 +121,22 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
 4. Cloudflare's edge rejects a client-supplied `CF-Connecting-IP`: API tests send it only to localhost.
 5. Test races (inspector not yet switched; HMR during a parallel agent's edits): made the helpers wait and made `NumField` read the live DOM value.
 
+**Independent code review (around 20:10):** a separate reviewing agent read the export, preview, command, store and storage code with no hints. It reported 12 issues, all of which I fixed:
+- Gain automation shifted when a clip's start was trimmed.
+- Edits could be lost when leaving the editor during an in-flight save.
+- A stale save response could overwrite another project's version number.
+- Reframing for social formats ignored keyframes.
+- Each clip's decoder stayed open until the end of the export.
+- Overlapping cut ranges were skipped.
+- On failure or cancel, the export left its encoders open.
+- Re-decoding past the end of the source media.
+- Stuttering preview during transitions.
+- A second play press while audio was loading started playback twice.
+- Late audio scheduling wasn't compensated.
+- Unfinished multipart uploads weren't counted against the storage cap.
+
+Regression tests were added for the logic fixes.
+
 **Human approvals and interventions:**
 1. One clarification about the deployment target. The supplied config named another project's live Worker; the user said to rename it to `ai-video-editor`. It took a few minutes of wall-clock time.
 2. Permission prompts and denials from the auto-mode safety classifier:
@@ -156,6 +172,7 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
   - Preview frames for MP4s that keep their index at the end of the file take ~2 s to appear on first seek in production (range fetch of the index); a "Loading media…" overlay shows meanwhile.
   - Caption chunks built from Whisper word timings carry no punctuation, because whisper-1 word tokens are unpunctuated.
   - Speed changes shift audio pitch (by design, documented).
+  - Switching directly from one project to *another* project while a save is in flight can drop that last pending edit; leaving to the dashboard flushes correctly. Rare, not fixed.
   - The color filters (brightness, contrast, saturation) need canvas `filter`, which Safari lacks.
 
 ## 12.6 Security and operational readiness

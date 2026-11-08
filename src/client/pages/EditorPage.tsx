@@ -29,8 +29,13 @@ export function EditorPage({ projectId }: { projectId: string }) {
       });
     return () => {
       cancelled = true;
-      void useEditor.getState().saveNow();
-      useEditor.getState().closeProject();
+      // Flush pending edits (waiting for any in-flight save) before releasing the project.
+      void useEditor
+        .getState()
+        .saveNow()
+        .finally(() => {
+          if (useEditor.getState().project?.id === projectId) useEditor.getState().closeProject();
+        });
     };
   }, [projectId]);
 

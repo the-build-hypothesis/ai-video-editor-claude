@@ -5,7 +5,6 @@
  * sync with the clock (re-seek if drift > 120 ms).
  */
 import type { AssetIndex, Project } from '../../shared/model';
-import { clipEndUs } from '../../shared/model';
 import { audioSegments, evaluateVisualLayers, type VisualLayer } from '../../shared/timeline-eval';
 import { projectDurationUs } from '../../shared/model';
 import { renderFrame, type DrawableSource } from './compositor';
@@ -122,8 +121,17 @@ export class PreviewEngine {
     this.requestDraw();
   }
 
+  private starting = false;
+
   async play() {
     if (!this.project || this.playing) return;
+    // A second play request while audio is still loading acts as "cancel" (toggle semantics).
+    if (this.starting) {
+      this.starting = false;
+      this.onStatus(null);
+      return;
+    }
+    this.starting = true;
     const dur = this.duration();
     if (dur <= 0) return;
     if (this.timeUs >= dur - 1000) this.timeUs = 0;
@@ -137,12 +145,15 @@ export class PreviewEngine {
       await Promise.all(pending.map((s) => mediaCache.loadAudio(s.assetId)));
       this.onStatus(null);
     }
+    if (!this.starting) return; // canceled while loading
+    this.starting = false;
     this.playing = true;
     this.startAudio(this.timeUs);
     this.loop();
   }
 
   pause() {
+    this.starting = false;
     if (!this.playing) return;
     this.timeUs = Math.round(this.currentTime());
     this.playing = false;
@@ -271,7 +282,9 @@ export class PreviewEngine {
       const slot = this.slotFor(l.clip.id, l.clip.assetId);
       const durSec = isFinite(slot.el.duration) ? slot.el.duration : Infinity;
       const target = Math.min(Math.max(0, l.sourceUs / 1e6), Math.max(0, durSec - 0.04));
-      const inRange = t >= l.clip.timelineStartUs && t < clipEndUs(l.clip);
+      // Every visible layer plays — including transition pre/post-roll outside the clip's own range —
+      // unless the source time is outside the media (then the edge frame is held, paused).
+      const inRange = l.sourceUs / 1e6 > 0.001 && l.sourceUs / 1e6 < durSec - 0.05;
       if (this.playing && inRange) {
         // Sync stats (PREV-04): |video element time − clock-derived source time| in ms.
         if (!slot.seeking && slot.el.readyState >= 2 && !slot.el.paused) {
