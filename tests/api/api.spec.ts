@@ -227,6 +227,8 @@ test.describe('projects', () => {
 
 test.describe('assets', () => {
   test('multipart upload of a >90 MB file: parts, magic check, completion, byte-exact ranges', async () => {
+    // Uses ~130 MB of storage: run locally only (the deployment's D1-fallback storage is capped).
+    test.skip(!/localhost|127\.0\.0\.1/.test(BASE) && !process.env.ALLOW_LARGE_REMOTE, 'large upload test is local-only');
     test.setTimeout(240_000);
     const c = await client();
     await json(await c.post('/api/auth/guest', { data: {} }));
