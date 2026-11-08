@@ -27,6 +27,9 @@ test('transcribe → edit caption → AI edit plan → apply → undo → export
   expect(count).toBeGreaterThan(1);
   const allText = (await page.getByTestId('caption-text').evaluateAll((els) => els.map((e) => (e as HTMLTextAreaElement).value).join(' '))).toLowerCase();
   expect(allText).toMatch(/caption|fox|demo/);
+  // Punctuation restored from Whisper segments (word timings alone are unpunctuated).
+  expect(allText).toMatch(/[.,!?]/);
+  console.log('[captions]', allText.slice(0, 200));
   // Correct the first caption.
   const first = page.getByTestId('caption-text').first();
   await first.fill('CORRECTED CAPTION');

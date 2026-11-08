@@ -12,6 +12,28 @@ interface Word {
   word: string;
 }
 
+const norm = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+
+/**
+ * whisper-1 word timestamps are unpunctuated; segment text is punctuated. Re-apply punctuation and
+ * casing from the segments by aligning tokens in order (falls back to the raw word on mismatch).
+ */
+export function punctuateWords(words: Word[], segments: { startSec: number; endSec: number; text: string }[]): Word[] {
+  const tokens = segments.flatMap((s) => s.text.split(/\s+/).filter(Boolean));
+  let ti = 0;
+  return words.map((w) => {
+    const n = norm(w.word);
+    // Look ahead a few tokens to tolerate small disagreements between words and segment text.
+    for (let k = ti; k < Math.min(tokens.length, ti + 4); k++) {
+      if (norm(tokens[k]) === n && n) {
+        ti = k + 1;
+        return { ...w, word: tokens[k] };
+      }
+    }
+    return w;
+  });
+}
+
 /** Group word timings into readable caption chunks (≤ 42 chars, ≤ 3.5 s, break after punctuation). */
 export function chunkWords(words: Word[], maxChars = 42, maxDur = 3.5): { startSec: number; endSec: number; text: string }[] {
   const out: { startSec: number; endSec: number; text: string }[] = [];
@@ -57,7 +79,7 @@ export async function transcribeClip(clipId: string, opts: { replace: boolean; o
   form.append('offsetSec', '0');
   opts.onStatus?.('Transcribing with OpenAI…');
   const r = await api.transcribe(form);
-  const chunks = r.words?.length ? chunkWords(r.words) : r.segments;
+  const chunks = r.words?.length ? chunkWords(punctuateWords(r.words, r.segments)) : r.segments;
   const toTimeline = (sec: number) => Math.round(clip.timelineStartUs + (sec * 1e6) / clip.speed);
   const end = clipEndUs(clip);
   const segs: CaptionSegment[] = chunks
