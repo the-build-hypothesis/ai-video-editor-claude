@@ -14,7 +14,7 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
 - export a real **H.264/AAC MP4**, rendered in the browser and stored privately in their account.
 
 - **Deployment:** https://ai-video-editor-v1-claude.thebuildhypothesis.com (health: `/api/health`).
-- **Source commit:** see `git log -1` on `main` (final SHA in the handoff message).
+- **Source commit:** `main`. Production Worker version `87b84806` was deployed from commit `9f7a73d`; later commits change documentation only.
 - **Real MP4 export generated and inspected:** yes.
   - ffprobe on the §8.2 output: H.264 High 1920×1080 at 30/1 fps, 900 frames, AAC-LC 48 kHz stereo, 30.016 s.
   - Frames at the beginning, middle and end were extracted and checked visually and by pixel assertions in automated tests.
@@ -31,6 +31,16 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
   2. Rendering happens in the browser tab; it needs WebCodecs H.264, so recent desktop Chrome/Edge are expected to work. Only Chromium 158 on Linux was verified.
   3. Uploads over 90 MB use multipart (64 MB parts, R2 multipart API) to stay under the Workers 100 MB request limit. Verified in production with a 130 MB upload.
   4. No password reset: there is no email provider (AUTH-04 blocked).
+
+**Run metrics (§13.2):**
+- **Wall-clock:** 16:57–~21:00 EST, about 4 h of the 8 h budget. I stopped once every P0, P1 (except the blocked AUTH-04) and most P2 requirements were implemented and verified in production.
+- **Human interventions:** 2 (deployment-target clarification; enabling R2).
+- **Permission denials:** 2 (printing env values; bulk production data delete). No explicit comparable approval policy was configured beyond the default auto mode.
+- **Timings:** first UI at about 17:48; first successful export at 17:49; first deployment at 17:52 (custom domain live).
+- **Deployment:** live on R2 since about 20:35.
+- **Tests:** 221 unit, 24 API and 14 browser e2e (real OpenAI calls included).
+- **API cost:** estimated under $0.10 of OpenAI usage.
+- **Commits:** about 45 on `main`.
 
 ## 12.2 Architecture
 
