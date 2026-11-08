@@ -43,6 +43,12 @@ test('transcribe → edit caption → AI edit plan → apply → undo → export
   expect(planText).toMatch(/addFade/);
   await page.screenshot({ path: 'artifacts/e2e-ai-plan.png' });
   const before = await page.getByTestId('clip').count();
+  // Plans that trim/delete require explicit confirmation of destructive changes.
+  const confirmBox = page.getByTestId('ai-confirm-destructive');
+  if (await confirmBox.count()) {
+    await expect(page.getByTestId('ai-apply')).toBeDisabled();
+    await confirmBox.check();
+  }
   await page.getByTestId('ai-apply').click();
   await expect(page.locator('[data-clip-kind="text"]')).toHaveCount(1);
   expect(await page.getByTestId('clip').count()).toBe(before + 1);

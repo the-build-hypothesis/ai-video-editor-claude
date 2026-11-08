@@ -151,7 +151,17 @@ describe('applyAiPlan — valid operations', () => {
     const { project, res } = one(p, op('duckMusic', { clipId: 'm1', volume: 0.2 }));
     expect(res.ok).toBe(true);
     expect((getClip(project, 'm1') as AudioClip).gainPoints.some((g) => g.gain === 0.2)).toBe(true);
-    expect(one(base(), op('duckMusic', { clipId: 'm1' })).res.error).toMatch(/caption/);
+  });
+
+  it('duckMusic without captions falls back to dialogue clips, and errors when there is no dialogue', () => {
+    const { project, res } = one(base(), op('duckMusic', { clipId: 'm1', volume: 0.3 }));
+    // base() has a video clip whose asset has audio → used as the dialogue range.
+    expect(res.ok).toBe(true);
+    expect(res.description).toMatch(/dialogue/);
+    expect((getClip(project, 'm1') as AudioClip).gainPoints.some((g) => g.gain === 0.3)).toBe(true);
+    const noDialogue = base();
+    for (const t of noDialogue.tracks) if (t.kind === 'video') t.muted = true;
+    expect(one(noDialogue, op('duckMusic', { clipId: 'm1' })).res.error).toMatch(/caption|dialogue/);
   });
 });
 

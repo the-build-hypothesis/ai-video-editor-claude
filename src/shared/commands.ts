@@ -415,7 +415,7 @@ export function updateCaptionSettings(p0: Project, args: { patch: Record<string,
 }
 
 /** Apply volume ducking: adds gain points to a clip that dip under caption segments (speech). */
-export function duckUnderCaptions(p0: Project, args: { clipId: string; duckGain: number; rampUs?: number }): Project {
+export function duckUnderCaptions(p0: Project, args: { clipId: string; duckGain: number; rampUs?: number; ranges?: { startUs: number; endUs: number }[] }): Project {
   const p = clone(p0);
   const { clip } = requireClip(p, args.clipId);
   if (clip.kind !== 'audio' && clip.kind !== 'video') throw new CommandError('Ducking applies to audio-bearing clips');
@@ -424,7 +424,7 @@ export function duckUnderCaptions(p0: Project, args: { clipId: string; duckGain:
   const start = clip.timelineStartUs;
   const end = clipEndUs(clip);
   // Merge caption segments that are close together.
-  const segs = [...p.captions.segments].sort((a, b) => a.startUs - b.startUs);
+  const segs = [...(args.ranges ?? p.captions.segments)].sort((a, b) => a.startUs - b.startUs);
   const merged: { s: number; e: number }[] = [];
   for (const s of segs) {
     const last = merged[merged.length - 1];

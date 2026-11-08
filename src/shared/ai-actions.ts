@@ -183,7 +183,8 @@ export function applyAiOperation(p: Project, op: AiOperation, ctx: CommandContex
       const H = p.settings.height;
       const posY = { top: -H * 0.35, center: 0, bottom: H * 0.32, lowerThird: H * 0.28 }[op.position ?? 'center'];
       const isLower = op.position === 'lowerThird';
-      const fontSize = op.fontSize ? Math.min(300, Math.max(12, op.fontSize)) : isLower ? Math.round(H * 0.05) : Math.round(H * 0.08);
+      // Model-provided sizes are clamped to a readable range relative to the frame height.
+      const fontSize = op.fontSize ? Math.min(Math.round(H * 0.25), Math.max(Math.round(H * 0.03), op.fontSize)) : isLower ? Math.round(H * 0.05) : Math.round(H * 0.08);
       const clip = cmd.makeTextClip({
         text,
         timelineStartUs: start,
@@ -291,10 +292,21 @@ export function applyAiOperation(p: Project, op: AiOperation, ctx: CommandContex
     }
     case 'duckMusic': {
       const f = clipOf(op.clipId);
-      if (p.captions.segments.length === 0) throw new CommandError('No caption/speech segments to duck under — create captions first');
       const g = op.volume ?? 0.25;
       if (g < 0 || g > 1) throw new CommandError('duck volume must be 0..1');
-      return { project: cmd.duckUnderCaptions(p, { clipId: f.clip.id, duckGain: g }), description: `Duck ${describeClip(p, f.clip.id)} to ${Math.round(g * 100)}% under speech` };
+      // Prefer caption timing (actual speech); otherwise fall back to clips that carry dialogue audio.
+      let ranges: { startUs: number; endUs: number }[] | undefined;
+      let basis = 'speech (captions)';
+      if (p.captions.segments.length === 0) {
+        ranges = p.tracks
+          .filter((t) => t.kind === 'video' && !t.muted)
+          .flatMap((t) => t.clips)
+          .filter((c) => c.kind === 'video' && !c.muted && c.id !== f.clip.id && ctx.assets[c.assetId]?.hasAudio)
+          .map((c) => ({ startUs: c.timelineStartUs, endUs: clipEndUs(c) }));
+        if (ranges.length === 0) throw new CommandError('No captions or dialogue clips to duck under — create captions first');
+        basis = 'clips with dialogue audio';
+      }
+      return { project: cmd.duckUnderCaptions(p, { clipId: f.clip.id, duckGain: g, ranges }), description: `Duck ${describeClip(p, f.clip.id)} to ${Math.round(g * 100)}% under ${basis}` };
     }
   }
   void dur;
@@ -326,6 +338,8 @@ export function applyAiPlan(p: Project, ops: AiOperation[], ctx: CommandContext,
 export function describeProjectForAi(p: Project, assets: Record<string, { name: string; kind: string; durationUs: number | null; hasAudio: boolean }>): string {
   const lines: string[] = [];
   lines.push(`Project "${p.name.replace(/[\r\n]/g, ' ')}" ${p.settings.width}x${p.settings.height} @${p.settings.fps}fps, duration ${usToSec(projectDurationUs(p)).toFixed(2)}s.`);
+  const visualEnd = p.tracks.filter((t) => t.kind === 'video').flatMap((t) => t.clips).filter((c) => c.kind !== 'text').reduce((m, c) => Math.max(m, clipEndUs(c)), 0);
+  lines.push(`Visual content (video/image clips) ends at ${usToSec(visualEnd).toFixed(2)}s.`);
   lines.push('Tracks (visual tracks listed first composite on top):');
   for (const t of p.tracks) {
     lines.push(`- track ${t.id} (${t.kind}, name ${t.name}${t.locked ? ', LOCKED' : ''}${t.muted ? ', muted' : ''}, volume ${t.volume})`);
