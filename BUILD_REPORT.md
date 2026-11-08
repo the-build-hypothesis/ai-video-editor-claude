@@ -27,9 +27,9 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
   - Failure-recovery paths tested (upload, transcription, AI plan, export, autosave conflict).
   - axe accessibility scan clean.
 - **Main limitations:**
-  1. **R2 is not enabled** on the Cloudflare account (`code 10042`). Media and exports therefore live in a D1 chunked-blob fallback, capped at 450 MB total by a guard. Enabling R2 and redeploying with `npm run deploy` switches to R2 with no code changes.
+  1. **R2 was unavailable for most of the run** (`code 10042`). I built a D1 chunked-blob fallback so the product could deploy and be tested. The user enabled R2 at about 20:30. Production now stores media and exports in **R2**, and objects written earlier stay readable through a D1 read fallback.
   2. Rendering happens in the browser tab; it needs WebCodecs H.264, so recent desktop Chrome/Edge are expected to work. Only Chromium 158 on Linux was verified.
-  3. Uploads over 90 MB use multipart (64 MB parts) to stay under the Workers 100 MB request limit. While on D1 storage, total media and export storage is about 450 MB.
+  3. Uploads over 90 MB use multipart (64 MB parts, R2 multipart API) to stay under the Workers 100 MB request limit. Verified in production with a 130 MB upload.
   4. No password reset: there is no email provider (AUTH-04 blocked).
 
 ## 12.2 Architecture
@@ -88,7 +88,7 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
 - Only the frame source differs between the two (`<video>` vs exact decoded frames). Rotation metadata is honored on both sides; this was found and fixed with a dedicated test.
 
 **Storage, auth, background processing, OpenAI:**
-- **Storage:** D1 holds metadata. The object store is R2 when the `MEDIA` binding exists, otherwise 1 MB D1 chunks; the current deployment uses the D1 fallback.
+- **Storage:** D1 holds metadata. Objects live in **R2** (binding `MEDIA`, bucket `ai-video-editor-claude-media`). The D1 1 MB-chunk store is a fallback for builds without R2 (`FF_STORAGE=d1`), and serves reads for objects written before R2 was enabled.
 - **Auth:** cookie sessions; guests can register later and keep their projects.
 - **Background processing:** the exporter is client-driven with server-tracked job states plus a stale-job cron.
 - **OpenAI:** models are configured by `OPENAI_MODEL=gpt-4o-mini` and `OPENAI_TRANSCRIPTION_MODEL=whisper-1` vars. The key is a Worker secret.
@@ -112,11 +112,13 @@ FrameForge is a working browser video editor deployed on Cloudflare. In the depl
 | 17:55 | **First AI features in the browser:** transcription to captions burned into the export, and AI plan to apply to undo. In production the first attempt failed with HTTP 401 because the key in `.dev.vars` was quoted; re-provisioned the secret without quotes and sanitized provider errors so they no longer echo masked keys. |
 | 18:03 | All API and e2e suites pass against production. |
 | 18:05–19:30 | Unit-test suite (204 tests via a second sub-agent; found and fixed 5 shared-logic bugs); §8.2 final-task e2e; inspector a11y labels; image native-size default; light-mode contrast; **rotation-metadata export bug** found and fixed; Journey E failure-recovery and conflict tests; AI planner quality fixes; axe scan and fixes; AI-09 silence removal; D1 capacity guard; admin-allowlist security fix. |
-| 19:31 | Deployment `d4a3fb7d`; production re-verified. Later deploys are listed at the end of this report. |
+| 19:31 | Deployment `d4a3fb7d`; production re-verified. |
+| 19:35–20:20 | Silence removal, social variants, keyboard nudge, multipart large uploads, keyframes, caption punctuation, account deletion, preview sync work, Firefox degradation check, and the independent review fixes (deploy `494d05ff`). |
+| ~20:30 | **Human intervention 2:** asked the user how to free production storage (test data had filled 315 of 450 MB of the D1 fallback). The user enabled R2. I created the bucket, added a legacy-D1 read fallback, and deployed `94a4d93c` with R2. The **full suite (37 tests, including the §8.2 task and a 130 MB R2 multipart upload) passed against production.** |
 
 **Blockers and recovery:**
 1. Missing Chromium system libraries: extracted locally, without root.
-2. R2 not enabled: D1 blob fallback plus capacity guard. Asked the user to enable R2.
+2. R2 not enabled: D1 blob fallback plus capacity guard. The user enabled R2 later; production moved to R2.
 3. Quoted OpenAI key: re-provisioned the secret.
 4. Cloudflare's edge rejects a client-supplied `CF-Connecting-IP`: API tests send it only to localhost.
 5. Test races (inspector not yet switched; HMR during a parallel agent's edits): made the helpers wait and made `NumField` read the live DOM value.
@@ -139,10 +141,11 @@ Regression tests were added for the logic fixes.
 
 **Human approvals and interventions:**
 1. One clarification about the deployment target. The supplied config named another project's live Worker; the user said to rename it to `ai-video-editor`. It took a few minutes of wall-clock time.
-2. Permission prompts and denials from the auto-mode safety classifier:
+2. One storage decision: the user enabled R2 when I asked how to free production storage.
+3. Permission prompts and denials from the auto-mode safety classifier:
    - a command that would have printed non-secret env values was denied, so I worked from names only;
    - a command to bulk-delete test data from the production database was denied. I did not retry; the decision is left to the user.
-3. No human code or design input.
+4. No human code or design input.
 
 ## 12.4 Feature status
 
@@ -213,12 +216,12 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 - **Local runs:** a similar order of magnitude (each local run of the AI e2e specs costs under $0.01).
 - **Pricing used by the estimator:** whisper-1 $0.006/min; gpt-4o-mini $0.15 per 1M input tokens and $0.60 per 1M output tokens.
 - **Total OpenAI spend for the session:** estimated **under $0.10**. Not reconciled against the OpenAI billing dashboard (no access).
-- **Cloudflare:** Workers + D1 within included usage. Production D1 holds about 255 MB of mostly test media and exports. Rendering compute is the user's browser, at no server cost.
+- **Cloudflare:** Workers, D1 and R2 within included usage. Production D1 still holds about 315 MB of earlier test media and exports in the fallback store (readable, not migrated). New objects go to R2. Rendering compute is the user's browser, at no server cost.
 
 ## 12.8 Decisions and tradeoffs
 
 - **Browser export vs. an external render service.** I chose browser export, which needs no extra infrastructure and shares the preview code. The cost is client CPU and memory, and the tab must stay open. Rejected: FFmpeg.wasm (slower, larger download, needs COOP/COEP) and an external FFmpeg service (not provisioned, would need separate deployment and credentials).
-- **D1 blob fallback instead of blocking on R2.** It keeps the product deployable and testable. The cost is the D1 size cap and lower throughput. R2 remains the intended production store; flip by enabling R2 and running `npm run deploy`.
+- **D1 blob fallback instead of blocking on R2.** It kept the product deployable and testable while R2 was disabled; the cost was a D1 size cap (450 MB guard) and lower throughput. Once R2 was enabled, production switched with no data migration needed, because reads fall back to D1.
 - **Snapshot undo instead of inverse operations.** Simple and correct for small JSON projects.
 - **One schema for AI operations with nullable fields.** This fits OpenAI strict structured output. Each field is validated per op type in code.
 - **Same-track overlap allowed with a deterministic top-most rule**, instead of forbidding overlaps. Easier dragging, and the rule is documented.
@@ -228,7 +231,7 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
   - filler-word removal (needs word timings stored in the project);
   - server-side rendering for closed tabs.
 - **Needed for production quality:**
-  - Enable R2 (multipart is already implemented for it, but untested against real R2) and make uploads resumable across page reloads.
+  - Make uploads resumable across page reloads.
   - Email verification and password reset.
   - Real-browser test matrix (Safari, Firefox, Windows/macOS Chrome).
   - Error monitoring and alerting.
@@ -237,13 +240,12 @@ All pass locally; in production the API suite, the light e2e specs and the §8.2
 
 ## 12.9 Next steps
 
-1. Enable R2 on the account, deploy with R2, and verify the R2 multipart path against real R2 (implemented, but only tested with the D1 store).
+1. Optionally migrate or purge the legacy D1-stored test objects (about 315 MB) now that R2 is active.
 2. Cross-browser verification (Safari: canvas `filter` fallback for color effects; Firefox WebCodecs).
 3. Email provider for password reset and verification, so admin access depends on a verified email.
 
 **Top technical risks:**
 - Browser codec and WebCodecs variability for unusual source media.
 - Memory use on long or high-resolution projects, since whole source files are loaded into memory for export.
-- The D1 storage cap until R2 is enabled.
 
-**Recommended next milestone:** R2 enablement and verification, cross-browser QA, keyframe easing, and filler-word cuts from stored word timings.
+**Recommended next milestone:** cross-browser QA, keyframe easing, and filler-word cuts from stored word timings.

@@ -19,6 +19,8 @@ All results below come from runs during the build session (2026-11-07). The fina
 | API + e2e (local) | `npx playwright test --workers=2` | ✅ **37 passed** (24 API + 13 browser; real OpenAI calls included), ~1.3 min |
 | API + e2e (production) | `API_BASE_URL=https://… ADMIN_EMAIL=… ADMIN_PASSWORD=… npx playwright test tests/api tests/e2e/{account,edit-export,ai-captions,failure-recovery,silence,media-compat,a11y}.spec.ts` | ✅ 29 passed, then the a11y spec failed on one spinner-label issue; fixed, redeployed, re-run ✅ |
 | Production, final deploy `494d05ff` | `… npx playwright test tests/api tests/e2e/{edit-export,ai-captions,keyframes,account}.spec.ts` | ✅ **27 passed**, 1 skipped (the 130 MB multipart test is local-only, to protect the storage cap) |
+| **Production on R2, deploy `94a4d93c`** | `ALLOW_LARGE_REMOTE=1 API_BASE_URL=https://… ADMIN_EMAIL=… ADMIN_PASSWORD=… npx playwright test --workers=2` | ✅ **37 passed** (full suite: 24 API, including a 130 MB R2 multipart upload, plus all 13 browser specs including §8.2 with two 1080p exports, 35–40 s each for export and upload), 6.3 min |
+| Legacy objects after the R2 switch | scripted: an earlier test account's D1-stored assets fetched with Range | ✅ 206, correct bytes |
 | Earlier production runs | `timeline-drag`, `silence`, `variants`, `media-compat`, `failure-recovery`, `a11y`, `final-task` specs | ✅ each passed on production at least once during the session |
 | §8.2 final task (production) | `API_BASE_URL=https://… npx playwright test tests/e2e/final-task.spec.ts` | ✅ passed on deployed version `634c4c01` (export+upload 78 s and 64 s) |
 
@@ -101,4 +103,4 @@ The source timecodes burned into the test pattern confirm the trim and split sou
 ## Known failures / flakiness
 
 - Early runs hit a test race where fields were filled before the inspector switched to the newly added clip, and once a hot-reload happened mid-test while another agent edited files. The helpers now wait for the inspector, and `NumField` commits read the live DOM value. No failures since.
-- Production storage is the D1 fallback, so a capacity guard (`D1_MAX_DB_MB=450`) rejects new uploads with 507 `storage_full` once the database nears that size. Repeated full test runs against production consume this budget; see BUILD_REPORT.
+- Until ~20:30, production used the D1 fallback with a 450 MB guard, so test runs against production were kept light. Production now uses R2.

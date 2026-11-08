@@ -45,7 +45,7 @@ Browser (React 19 + Vite)                                 Cloudflare Worker (Hon
   - `src/client/engine/compositor.ts` draws them, and `src/client/engine/audio-graph.ts` builds the Web Audio mix.
   - The preview feeds the compositor `<video>` frames and plays the mix in an `AudioContext`. The exporter feeds it exact WebCodecs-decoded frames and renders the same mix graph in an `OfflineAudioContext`.
 - **Export runs in the browser** (WebCodecs + [mediabunny](https://mediabunny.dev)). Cloudflare Workers cannot run long video encodes, so the Worker only tracks job state (`queued → running → completed | failed | canceled`) and stores and serves the finished MP4 privately. AAC is encoded natively where the browser supports it; otherwise the `@mediabunny/aac-encoder` WASM encoder is used (for example Chromium on Linux). If H.264 encoding isn't available, export is disabled with a clear message; no other codec is substituted.
-- **Storage:** media and exports live in **R2** when the `MEDIA` binding exists. When R2 isn't enabled on the account, build with `FF_STORAGE=d1` and the Worker stores objects as 1 MB chunks in D1 (`src/worker/d1-blob.ts`). The current deployment uses that fallback; see BUILD_REPORT.
+- **Storage:** media and exports live in **R2** (the current deployment). Builds made with `FF_STORAGE=d1` store objects as 1 MB chunks in D1 (`src/worker/d1-blob.ts`), behind a capacity guard. With R2 active, objects written earlier through the D1 store remain readable.
 - **AI** (server-side only; the key never reaches the browser):
   - **Transcription:** `OPENAI_TRANSCRIPTION_MODEL` (default `whisper-1`) returns segment and word timestamps. Only the trimmed part of the clip is sent, as 16 kHz mono WAV.
   - **Editing:** `OPENAI_MODEL` (default `gpt-4o-mini`) uses strict JSON-schema structured output. It returns typed operations, which are validated on the server and again in the client, previewed, and applied through the same command layer as manual edits, so the whole edit is a single undo step.
@@ -101,17 +101,18 @@ export CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_API_TOKEN=...
 npx wrangler d1 create ai-video-editor-claude-db           # once; put the id in wrangler.jsonc
 npx wrangler d1 migrations apply DB --remote -c wrangler.jsonc
 npx wrangler secret put OPENAI_API_KEY                      # paste the key (no quotes)
-# With R2 enabled on the account:
-npx wrangler r2 bucket create ai-video-editor-claude-media && npm run build && npx wrangler deploy
-# Without R2 (current deployment):
-FF_STORAGE=d1 npm run build && npx wrangler deploy
+# With R2 enabled on the account (current deployment):
+npx wrangler r2 bucket create ai-video-editor-claude-media   # once
+npm run deploy
+# Without R2 (D1 chunk storage, capped by D1_MAX_DB_MB):
+npm run deploy:d1
 ```
 
 `npm run build` writes `dist/` including the generated Worker config, and `wrangler deploy` picks it up. The custom domain is configured in `routes` in `wrangler.jsonc`. A daily cron (`17 3 * * *`) removes expired guests and sessions and stale uploads, and fails stuck export jobs.
 
 ## Limits and supported browsers
 
-- **Per file:** up to 1 GB and 20 minutes. Files over 90 MB upload as 64 MB parts (R2 multipart, or chunk-offset writes in the D1 fallback), which stays under the Workers 100 MB request-body limit. In the current D1-storage deployment, total storage is capped at about 450 MB.
+- **Per file:** up to 1 GB and 20 minutes. Files over 90 MB upload as 64 MB parts (R2 multipart, or chunk-offset writes in the D1 fallback), which stays under the Workers 100 MB request-body limit. D1-storage builds cap total storage at `D1_MAX_DB_MB` (450 MB by default).
 - **Storage per account:** 2 GB for registered users, 500 MB for guests. Guests are kept for 7 days of inactivity.
 - **Rate limits:** 60 AI calls/hour/user and 30 exports/hour/user. Login and registration are also rate-limited by IP.
 - **Export:** stored exports are capped at 100 MB. Larger renders can still be downloaded locally.
