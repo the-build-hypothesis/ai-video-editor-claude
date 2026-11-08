@@ -180,7 +180,12 @@ export class PreviewEngine {
       return;
     }
     this.timeUs = Math.max(this.playStartUs, t);
+    const t0 = performance.now();
     this.drawNow();
+    // Lightweight playback stats (read by perf tests / devtools): frames drawn and draw time.
+    const stats = ((globalThis as { __ffPreviewStats?: { frames: number; drawMs: number } }).__ffPreviewStats ??= { frames: 0, drawMs: 0 });
+    stats.frames++;
+    stats.drawMs += performance.now() - t0;
     this.onTime(this.timeUs);
     this.raf = requestAnimationFrame(this.loop);
   };
