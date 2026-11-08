@@ -8,6 +8,10 @@ import { formatShort } from '../../shared/time';
 import type { ExportDTO } from '../../shared/api-types';
 import { LIMITS } from '../../shared/api-types';
 import { pause } from '../actions';
+import { reframeForAspect } from '../../shared/commands';
+import { migrateProject } from '../../shared/migrate';
+import { navigate } from '../main';
+import { ASPECT_PRESETS, type AspectPreset } from '../../shared/model';
 
 const PRESETS = {
   '1080p': { shortSide: 1080, videoBitrate: 8_000_000 },
@@ -224,9 +228,48 @@ export function ExportPanel() {
           ))}
         </ul>
       </section>
+      <VariantsSection />
       <p className="hint">
         Export runs locally with WebCodecs (H.264) and is stored privately in your account. Supported: recent desktop Chrome/Edge; Safari 17+ and Firefox 130+ may work but are unverified.
       </p>
     </div>
+  );
+}
+
+/** AI-10: create a reframed copy of the project for social formats (editable afterwards). */
+function VariantsSection() {
+  const project = useEditor((s) => s.project)!;
+  const [busy, setBusy] = useState<string | null>(null);
+  const current = (Object.keys(ASPECT_PRESETS) as AspectPreset[]).find((k) => ASPECT_PRESETS[k].width === project.settings.width && ASPECT_PRESETS[k].height === project.settings.height);
+  const create = async (aspect: AspectPreset) => {
+    setBusy(aspect);
+    try {
+      await useEditor.getState().saveNow();
+      const dup = (await api.duplicateProject(project.id)).project;
+      const full = (await api.getProject(dup.id)).project;
+      const reframed = reframeForAspect(migrateProject(full.data), { aspect, name: `${project.name} (${aspect})` });
+      await api.saveProject(dup.id, reframed, full.version);
+      useEditor.getState().toast('success', `Created "${reframed.name}". Adjust framing with X/Y in the Inspector or by dragging in the preview.`);
+      navigate(`/project/${dup.id}`);
+    } catch (e) {
+      useEditor.getState().toast('error', `Could not create the variant: ${(e as Error).message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <section className="insp-section">
+      <h4>Social variants</h4>
+      <p className="hint">Creates a copy reframed for another aspect ratio. Media fills the frame (centered) and titles are rescaled; the original project is unchanged.</p>
+      <div className="row wrap">
+        {(['9:16', '1:1', '16:9'] as AspectPreset[])
+          .filter((a) => a !== current)
+          .map((a) => (
+            <button key={a} className="btn btn-sm" disabled={!!busy} onClick={() => create(a)} data-testid={`variant-${a}`}>
+              {busy === a ? 'Creating…' : `Create ${a} version`}
+            </button>
+          ))}
+      </div>
+    </section>
   );
 }

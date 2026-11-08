@@ -54,3 +54,21 @@ describe('removeRangesFromClip', () => {
     expect(v1.find((c) => c.id === 'b')!.timelineStartUs).toBe(9 * S);
   });
 });
+
+describe('reframeForAspect', () => {
+  it('switches to 9:16, fills frame with full-frame media, scales text and keeps timing', () => {
+    let p = projectWith({ v1: [videoClip('a', 0, 5 * S)] });
+    p = cmd.addClip(p, { trackId: 'v2', clip: cmd.makeTextClip({ text: 'Hi', timelineStartUs: 0, durationUs: S, y: 300, style: { fontSize: 100 } }) }, { assets: {} });
+    const r = cmd.reframeForAspect(p, { aspect: '9:16', name: 'Vertical' });
+    expect(r.settings).toMatchObject({ width: 1080, height: 1920 });
+    expect(r.name).toBe('Vertical');
+    const v = r.tracks.find((t) => t.id === 'v1')!.clips[0];
+    expect(v.kind === 'video' && v.transform.fit).toBe('cover');
+    expect(v.timelineStartUs).toBe(0);
+    expect(v.durationUs).toBe(5 * S);
+    const t = r.tracks.find((x) => x.id === 'v2')!.clips[0];
+    expect(t.kind === 'text' && t.style.fontSize).toBe(56); // 100 × min(1080/1920, 1920/1080)
+    expect(t.kind === 'text' && t.transform.y).toBe(Math.round(300 * (1920 / 1080)));
+    expect(ProjectSchema.safeParse(r).success).toBe(true);
+  });
+});

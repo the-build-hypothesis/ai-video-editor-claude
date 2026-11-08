@@ -492,3 +492,34 @@ export function removeRangesFromClip(p0: Project, args: { clipId: string; ranges
   }
   return p;
 }
+
+/**
+ * AI-10: reframe a project for a social aspect ratio. Media clips switch to "cover" (fill frame,
+ * centered; editable afterwards via X/Y or drag), text positions and sizes scale to the new frame.
+ */
+export function reframeForAspect(p0: Project, args: { aspect: AspectPreset; name?: string }): Project {
+  const p = clone(p0);
+  const oldW = p.settings.width;
+  const oldH = p.settings.height;
+  const { width: W, height: H } = ASPECT_PRESETS[args.aspect];
+  const sx = W / oldW;
+  const sy = H / oldH;
+  const sText = Math.min(sx, sy);
+  p.settings.width = W;
+  p.settings.height = H;
+  if (args.name) p.name = args.name.slice(0, 120);
+  for (const t of p.tracks) {
+    for (const c of t.clips) {
+      if (c.kind === 'video' || c.kind === 'image') {
+        const fullFrame = c.transform.scale === 1 && c.transform.x === 0 && c.transform.y === 0;
+        if (fullFrame) c.transform = { ...c.transform, fit: 'cover' };
+        else c.transform = { ...c.transform, x: Math.round(c.transform.x * sx), y: Math.round(c.transform.y * sy) };
+      } else if (c.kind === 'text') {
+        c.transform = { ...c.transform, x: Math.round(c.transform.x * sx), y: Math.round(c.transform.y * sy) };
+        c.style = { ...c.style, fontSize: Math.max(8, Math.round(c.style.fontSize * sText)), strokeWidth: Math.round(c.style.strokeWidth * sText) };
+      }
+    }
+  }
+  p.captions.style.fontSize = Math.max(12, Math.round(p.captions.style.fontSize * Math.max(sText, 0.75)));
+  return finalize(p);
+}
