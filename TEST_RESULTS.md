@@ -14,10 +14,12 @@ All results below come from runs during the build session (2026-11-07). The fina
 |---|---|---|
 | Typecheck | `npm run typecheck` | ✅ 0 errors |
 | Lint | `npm run lint` | ✅ 0 errors, 3 warnings (`no-control-regex` on a filename sanitizer, `no-useless-assignment`, one `no-explicit-any` in a test) |
-| Unit tests | `npm test` (vitest) | ✅ 10 files, **208 passed** |
+| Unit tests | `npm test` (vitest) | ✅ 12 files, **220 passed** |
 | Build | `FF_STORAGE=d1 npm run build` | ✅ (client ~1.0 MB JS + 1.1 MB lazy AAC encoder chunk) |
-| API + e2e (local) | `npx playwright test --workers=2` | ✅ **31 passed** (22 API + 9 browser), ~1.2 min |
+| API + e2e (local) | `npx playwright test --workers=2` | ✅ **37 passed** (24 API + 13 browser; real OpenAI calls included), ~1.3 min |
 | API + e2e (production) | `API_BASE_URL=https://… ADMIN_EMAIL=… ADMIN_PASSWORD=… npx playwright test tests/api tests/e2e/{account,edit-export,ai-captions,failure-recovery,silence,media-compat,a11y}.spec.ts` | ✅ 29 passed, then the a11y spec failed on one spinner-label issue; fixed, redeployed, re-run ✅ |
+| Production, final deploy `494d05ff` | `… npx playwright test tests/api tests/e2e/{edit-export,ai-captions,keyframes,account}.spec.ts` | ✅ **27 passed**, 1 skipped (the 130 MB multipart test is local-only, to protect the storage cap) |
+| Earlier production runs | `timeline-drag`, `silence`, `variants`, `media-compat`, `failure-recovery`, `a11y`, `final-task` specs | ✅ each passed on production at least once during the session |
 | §8.2 final task (production) | `API_BASE_URL=https://… npx playwright test tests/e2e/final-task.spec.ts` | ✅ passed on deployed version `634c4c01` (export+upload 78 s and 64 s) |
 
 ## Unit tests (vitest)
@@ -29,14 +31,16 @@ All results below come from runs during the build session (2026-11-07). The fina
 | `undo-serialization.test.ts` | 33 | JSON round trip, v1→v2 migration, newer/garbage schema rejected, store undo/redo semantics, command immutability on deep-frozen input for all commands |
 | `timeline-eval.test.ts` | 27 | layer order, fades, transitions (dissolve, dip, wipe), speed mapping, caption boundaries, audio segment rules, gain automation, export plan (30 s @ 30 fps = 900 frames) |
 | `ai-actions.test.ts` | 25 | plan schema rejects unknown/garbage ops; valid ops apply; unknown IDs, out-of-range values, locked tracks and missing transition predecessors are rejected; destructive flags; caption follow-up; untrusted transcript wrapping; JSON schema matches zod |
-| `remove-ranges.test.ts` | 3 | silence cuts keep source mapping, ripple with no gaps, captions shift/remove, clamping |
+| `remove-ranges.test.ts` | 7 | silence cuts keep source mapping, ripple with no gaps, captions shift/remove, clamping, overlapping ranges merged; social reframe (incl. keyframes); trim-start keeps gain automation in place |
+| `keyframes.test.ts` | 5 | interpolation and hold, auto-key vs base edits, split continuity, trim rebase, last-key bake |
+| `transcribe.test.ts` | 3 | punctuation restored from Whisper segments, caption chunking limits, SRT format |
 | `worker-crypto/sniff/rules/plan.test.ts` | 23 | PBKDF2 hash/verify, magic-byte sniffing, job status transitions, rate-limit windows, admin ranges, cost estimates, plan parsing |
 
 Bugs found by these tests and fixed: frame-count off-by-one (exports had a trailing extra frame), `usToFrame` boundary rounding, split dropping gain automation at the cut, image clip start-trim limit, and AI transition-predecessor tolerance not matching the renderer.
 
 ## API tests (`tests/api/api.spec.ts`, Playwright request context)
 
-22 tests: health without secrets; JSON 404 with request id; register/login/logout/me; cookie flags; validation and duplicate email; generic wrong-password error; login rate limit (429 + Retry-After); guest flow and upgrade keeping projects; CSRF header requirement; project CRUD, 409 conflict, rename, duplicate, revisions and restore; asset upload (PNG and MP3), list, Range requests (206), thumbnail, patch; corrupt MP4, wrong type and oversize rejected; guest quota; export lifecycle and download; failed/canceled jobs can't complete; **cross-user isolation (404 on another user's project, asset, export and content)**; unauthenticated 401; admin 403 and 200 with metrics for all ranges; AI validation paths; **real OpenAI transcription** (whisper-1: 4 segments, 28 words, timestamps offset correctly); **real OpenAI plan** (gpt-4o-mini: valid `addText` op).
+24 tests. Added later in the session: self-service account deletion (data gone afterwards), and a 130 MB multipart upload with byte-exact Range checks across part boundaries (local only). The original 22: health without secrets; JSON 404 with request id; register/login/logout/me; cookie flags; validation and duplicate email; generic wrong-password error; login rate limit (429 + Retry-After); guest flow and upgrade keeping projects; CSRF header requirement; project CRUD, 409 conflict, rename, duplicate, revisions and restore; asset upload (PNG and MP3), list, Range requests (206), thumbnail, patch; corrupt MP4, wrong type and oversize rejected; guest quota; export lifecycle and download; failed/canceled jobs can't complete; **cross-user isolation (404 on another user's project, asset, export and content)**; unauthenticated 401; admin 403 and 200 with metrics for all ranges; AI validation paths; **real OpenAI transcription** (whisper-1: 4 segments, 28 words, timestamps offset correctly); **real OpenAI plan** (gpt-4o-mini: valid `addText` op).
 
 Production notes: the "different IP isn't rate-limited" assertion runs only locally, because the client IP can't be spoofed through Cloudflare. The admin check needs `ADMIN_EMAIL` and `ADMIN_PASSWORD` for the deployment's operator account.
 
@@ -52,6 +56,10 @@ Production notes: the "different IP isn't rate-limited" assertion runs only loca
 | `media-compat.spec.ts` | 1080p60 High profile with B-frames + 44.1 kHz audio, and a phone clip with 90° rotation metadata: preview and export orientation agree; duration and fps checked | ✅ | ✅ |
 | `silence.spec.ts` | WAV import → find silences → 1 proposal → cut → clip split/rippled → undo | ✅ | ✅ |
 | `a11y.spec.ts` | axe-core WCAG 2 A/AA on auth, dashboard and editor with all side tabs: 0 serious/critical violations | ✅ | ✅ (after spinner fix) |
+| `timeline-drag.spec.ts` | mouse trim of both edges, drag-move with snap to 0, library → V2 drop, cross-track drag + undo, Alt-arrow keyboard nudge | ✅ | ✅ |
+| `keyframes.spec.ts` | auto-key animation of a logo; interpolated inspector values; **motion verified in exported MP4 frames** | ✅ | ✅ |
+| `variants.spec.ts` | 16:9 → 9:16 social variant (filled framing), original unchanged | ✅ | ✅ |
+| `perf.spec.ts` | 10-clip project playback fps, A/V sync stats, scrubbing | ✅ | — |
 
 ## Export verification (actual files, kept in `artifacts/`, not committed)
 
