@@ -52,7 +52,7 @@ test('drag move, snap, trim edges, drop from library, move across tracks', async
   await expectRange(page, '[data-clip-kind="video"]', 2, 10);
   const [s2] = await range(page, '[data-clip-kind="video"]');
   // Source offset moved with the start edge (speed 1): source in == new start.
-  expect(Math.abs(parseFloat(await page.getByTestId('inspector').getByLabel('Source in', { exact: true }).inputValue()) - s2)).toBeLessThan(0.06);
+  await expect.poll(async () => Math.abs(parseFloat(await page.getByTestId('inspector').getByLabel('Source in', { exact: true }).inputValue()) - s2)).toBeLessThan(0.06);
 
   const [ps, pe] = await range(page, '[data-clip-kind="video"]');
   // Drag-move left by ~1.9s: snaps to timeline start (0).
