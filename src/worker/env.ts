@@ -9,6 +9,8 @@ export interface Env {
   OPENAI_TRANSCRIPTION_MODEL?: string;
   ADMIN_EMAILS?: string;
   APP_PUBLIC_URL?: string;
+  /** D1-fallback storage cap in MB (see storage.ensureCapacity). */
+  D1_MAX_DB_MB?: string;
 }
 
 export interface UserRow {

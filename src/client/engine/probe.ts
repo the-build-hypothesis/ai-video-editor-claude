@@ -118,7 +118,12 @@ export async function probeFile(file: File): Promise<ProbeResult> {
       const sink = new VideoSampleSink(vt);
       const sample = await sink.getSample(Math.min(1, durationSec / 3));
       if (sample) {
-        thumbnail = await canvasToJpeg(sample.toCanvasImageSource(), sample.displayWidth, sample.displayHeight);
+        // draw() honours rotation/flip metadata so thumbnails match the preview orientation.
+        const tw = 320;
+        const th = Math.max(2, Math.round((sample.displayHeight / sample.displayWidth) * tw));
+        const tc = new OffscreenCanvas(tw, th);
+        sample.draw(tc.getContext('2d')!, 0, 0, tw, th);
+        thumbnail = await tc.convertToBlob({ type: 'image/jpeg', quality: 0.75 });
         sample.close();
       }
     } catch {

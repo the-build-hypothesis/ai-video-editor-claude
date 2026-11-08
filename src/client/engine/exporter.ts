@@ -207,6 +207,23 @@ export async function exportMp4(
 
     // --- Video frames
     const frameSources = new Map<string, DrawableSource>();
+    // Rotation/flip metadata (e.g. phone footage): draw into an upright canvas first so the
+    // compositor sees the same orientation as the <video>-based preview.
+    const uprightCanvases = new Map<string, OffscreenCanvas>();
+    const uprightSource = (clipId: string, sample: VideoSample): DrawableSource => {
+      const dw = sample.displayWidth;
+      const dh = sample.displayHeight;
+      if (!sample.rotation && !(sample as { flipped?: boolean }).flipped) return { image: sample.toCanvasImageSource(), width: dw, height: dh };
+      let c = uprightCanvases.get(clipId);
+      if (!c || c.width !== dw || c.height !== dh) {
+        c = new OffscreenCanvas(dw, dh);
+        uprightCanvases.set(clipId, c);
+      }
+      const cx = c.getContext('2d')!;
+      cx.clearRect(0, 0, dw, dh);
+      sample.draw(cx, 0, 0, dw, dh);
+      return { image: c, width: dw, height: dh };
+    };
     const resolve = (layer: VisualLayer): DrawableSource | null => {
       if (layer.clip.kind === 'image') {
         const img = mediaCache.image(layer.clip.assetId);
@@ -225,7 +242,7 @@ export async function exportMp4(
         const r = readers.get(l.clip.id);
         if (!r) continue;
         const sample = await r.at(Math.max(0, l.sourceUs / 1e6));
-        if (sample) frameSources.set(l.clip.id, { image: sample.toCanvasImageSource(), width: sample.displayWidth, height: sample.displayHeight });
+        if (sample) frameSources.set(l.clip.id, uprightSource(l.clip.id, sample));
       }
       renderFrame(ctx, project, t, resolve, { scale, captions: project.captions.burnIn });
       await videoSource.add(t / 1e6, (frameToUs(n + 1, fps) - t) / 1e6);

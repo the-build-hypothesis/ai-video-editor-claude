@@ -5,12 +5,28 @@
  */
 import type { Env } from './env';
 import { D1BlobStore } from './d1-blob';
+import { ApiError } from './errors';
 
 /** Active object store: R2 when bound, otherwise the D1 chunked fallback. */
 export function bucket(env: Env): R2Bucket {
   return (env.MEDIA ?? new D1BlobStore(env.DB)) as unknown as R2Bucket;
 }
 export const storageBackend = (env: Env) => (env.MEDIA ? 'r2' : 'd1');
+
+/**
+ * Capacity guard for the D1 fallback: D1 databases have a hard size limit (500 MB on the free
+ * plan, 10 GB on paid). Refuse new objects with a clear message before D1 itself fails.
+ * Limit is configurable via the D1_MAX_DB_MB var (default 450). No-op when R2 is bound.
+ */
+export async function ensureCapacity(env: Env, incomingBytes: number): Promise<void> {
+  if (env.MEDIA) return;
+  const limitMb = Number(env.D1_MAX_DB_MB ?? '450') || 450;
+  const r = await env.DB.prepare('SELECT 1').run();
+  const size = Number((r.meta as { size_after?: number }).size_after ?? 0);
+  if (size + incomingBytes > limitMb * 1024 * 1024) {
+    throw new ApiError(507, 'storage_full', 'Server media storage is full. Delete unused media or exports, or ask the administrator to enable R2 storage.');
+  }
+}
 
 export const keys = {
   assetOriginal: (ownerId: string, assetId: string) => `u/${ownerId}/a/${assetId}/original`,
@@ -20,6 +36,7 @@ export const keys = {
 };
 
 export async function putObject(env: Env, key: string, body: ReadableStream | ArrayBuffer | Uint8Array, contentType: string): Promise<number> {
+  if (!(body instanceof ReadableStream)) await ensureCapacity(env, body.byteLength);
   const obj = await bucket(env).put(key, body, { httpMetadata: { contentType } });
   if (!obj) throw new Error('Storage put failed');
   return obj.size;
@@ -77,6 +94,7 @@ export async function putVerifiedStream(
   headBytes: number,
   check: (head: Uint8Array) => boolean,
 ): Promise<'ok' | 'rejected'> {
+  await ensureCapacity(env, length);
   const reader = body.getReader();
   const buffered: Uint8Array[] = [];
   let have = 0;
